@@ -27,6 +27,7 @@ import 'loading_indicator_box.dart';
 import 'focusable_list_tile.dart';
 import 'overlay_sheet.dart';
 import 'stat_chip.dart';
+import '../maggioflix_config.dart';
 
 /// Why the sheet closed itself; a caller surfaces it on its own scaffold
 /// since the sheet is unmounting.
@@ -141,7 +142,8 @@ class _SeerrRequestSheetState extends State<SeerrRequestSheet> {
 
   int get _permissions => widget.source.client.session.permissions;
 
-  bool get _advancedAllowed => seerrHasPermission(_permissions, [SeerrPermission.requestAdvanced]);
+  bool get _advancedAllowed =>
+      maggioflixAllowAdvancedRequests && seerrHasPermission(_permissions, [SeerrPermission.requestAdvanced]);
 
   bool get _can4k {
     final settings = _settings;

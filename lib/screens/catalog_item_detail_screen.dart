@@ -1525,8 +1525,6 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
                                                   when tmdbId != null)
                                                 FocusableAction(
                                                   debugLabel: 'catalog_request',
-                                                  icon: Symbols.download_rounded,
-                                                  tooltip: t.seerr.request,
                                                   onPressed: () => unawaited(
                                                     showSeerrRequestSheet(
                                                       hostContext,
@@ -1535,6 +1533,32 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
                                                       tmdbId: tmdbId,
                                                       title: item.title,
                                                     ),
+                                                  ),
+                                                  // MaggioFlix: pulsante con scritta invece della sola icona.
+                                                  builder: (context, state) => FilledButton.icon(
+                                                    onPressed: () => unawaited(
+                                                      showSeerrRequestSheet(
+                                                        hostContext,
+                                                        source: seerr,
+                                                        kind: item.kind,
+                                                        tmdbId: tmdbId,
+                                                        title: item.title,
+                                                      ),
+                                                    ),
+                                                    style: FilledButton.styleFrom(
+                                                      backgroundColor: state.showFocus
+                                                          ? theme.colorScheme.onSurface
+                                                          : null,
+                                                      foregroundColor: state.showFocus
+                                                          ? theme.colorScheme.surface
+                                                          : null,
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: 20,
+                                                        vertical: 12,
+                                                      ),
+                                                    ),
+                                                    icon: const AppIcon(Symbols.library_add_rounded, fill: 1),
+                                                    label: Text(t.seerr.request),
                                                   ),
                                                 ),
                                               if (_hasTrailer)

@@ -20,3 +20,7 @@ const bool maggioflixAllowMediaBrowserLogin = false;
 
 /// La scheda Live TV resta nascosta dalla barra di navigazione.
 const bool maggioflixShowLiveTvTab = false;
+
+/// Richieste Seerr semplificate: si sceglie solo normale o 4K, senza server,
+/// profilo qualità, cartella, lingua o tag (Seerr usa i suoi predefiniti).
+const bool maggioflixAllowAdvancedRequests = false;
