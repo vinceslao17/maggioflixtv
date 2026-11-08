@@ -566,8 +566,8 @@ class _Translations$settings$it extends Translations$settings$en {
 	@override String get showNavBarLabels => 'Mostra le etichette della barra di navigazione';
 	@override String get showNavBarLabelsDescription => 'Mostra le etichette di testo sotto le icone della barra di navigazione';
 	@override String get startupSection => 'Sezione di avvio';
-	@override String get showExploreTab => 'Mostra la scheda Esplora';
-	@override String get showExploreTabDescription => 'Visualizza la scheda Esplora con contenuti di Esplora di Plex e dei tracker collegati';
+	@override String get showExploreTab => 'Mostra la scheda Richiedi';
+	@override String get showExploreTabDescription => 'Visualizza la scheda Richiedi con contenuti di Esplora di Plex e dei tracker collegati';
 	@override String get liveTvDefaultFavorites => 'Apri sui canali preferiti';
 	@override String get liveTvDefaultFavoritesDescription => 'Mostra solo i canali preferiti quando apri la TV in diretta';
 	@override String get general => 'Generali';
@@ -1543,7 +1543,7 @@ class _Translations$navigation$it extends Translations$navigation$en {
 	@override String get libraries => 'Librerie';
 	@override String get downloads => 'Download';
 	@override String get liveTv => 'Diretta';
-	@override String get explore => 'Esplora';
+	@override String get explore => 'Richiedi';
 }
 
 // Path: explore
@@ -1553,7 +1553,7 @@ class _Translations$explore$it extends Translations$explore$en {
 	final TranslationsIt _root; // ignore: unused_field
 
 	// Translations
-	@override String get title => 'Esplora';
+	@override String get title => 'Richiedi';
 	@override String get selectSource => 'Seleziona fonte';
 	@override late final _Translations$explore$rows$it rows = _Translations$explore$rows$it._(_root);
 	@override late final _Translations$explore$status$it status = _Translations$explore$status$it._(_root);
@@ -3849,8 +3849,8 @@ extension on TranslationsIt {
 			'settings.showNavBarLabels' => 'Mostra le etichette della barra di navigazione',
 			'settings.showNavBarLabelsDescription' => 'Mostra le etichette di testo sotto le icone della barra di navigazione',
 			'settings.startupSection' => 'Sezione di avvio',
-			'settings.showExploreTab' => 'Mostra la scheda Esplora',
-			'settings.showExploreTabDescription' => 'Visualizza la scheda Esplora con contenuti di Esplora di Plex e dei tracker collegati',
+			'settings.showExploreTab' => 'Mostra la scheda Richiedi',
+			'settings.showExploreTabDescription' => 'Visualizza la scheda Richiedi con contenuti di Esplora di Plex e dei tracker collegati',
 			'settings.liveTvDefaultFavorites' => 'Apri sui canali preferiti',
 			'settings.liveTvDefaultFavoritesDescription' => 'Mostra solo i canali preferiti quando apri la TV in diretta',
 			'settings.general' => 'Generali',
@@ -4707,8 +4707,8 @@ extension on TranslationsIt {
 			'navigation.libraries' => 'Librerie',
 			'navigation.downloads' => 'Download',
 			'navigation.liveTv' => 'Diretta',
-			'navigation.explore' => 'Esplora',
-			'explore.title' => 'Esplora',
+			'navigation.explore' => 'Richiedi',
+			'explore.title' => 'Richiedi',
 			'explore.selectSource' => 'Seleziona fonte',
 			'explore.rows.watchlist' => 'Lista da guardare',
 			'explore.rows.recommendedMovies' => 'Film consigliati',

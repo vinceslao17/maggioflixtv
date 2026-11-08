@@ -1367,11 +1367,11 @@ class Translations$settings$en {
 	/// en: 'Startup Section'
 	String get startupSection => 'Startup Section';
 
-	/// en: 'Show Explore Tab'
-	String get showExploreTab => 'Show Explore Tab';
+	/// en: 'Show Request Tab'
+	String get showExploreTab => 'Show Request Tab';
 
-	/// en: 'Display the Explore tab with content from Plex Discover and connected trackers'
-	String get showExploreTabDescription => 'Display the Explore tab with content from Plex Discover and connected trackers';
+	/// en: 'Display the Request tab with content from Plex Discover and connected trackers'
+	String get showExploreTabDescription => 'Display the Request tab with content from Plex Discover and connected trackers';
 
 	/// en: 'Default to Favorite Channels'
 	String get liveTvDefaultFavorites => 'Default to Favorite Channels';
@@ -3780,8 +3780,8 @@ class Translations$navigation$en {
 	/// en: 'Live TV'
 	String get liveTv => 'Live TV';
 
-	/// en: 'Explore'
-	String get explore => 'Explore';
+	/// en: 'Request'
+	String get explore => 'Request';
 }
 
 // Path: explore
@@ -3792,8 +3792,8 @@ class Translations$explore$en {
 
 	// Translations
 
-	/// en: 'Explore'
-	String get title => 'Explore';
+	/// en: 'Request'
+	String get title => 'Request';
 
 	/// en: 'Select source'
 	String get selectSource => 'Select source';
@@ -8570,8 +8570,8 @@ extension on Translations {
 			'settings.showNavBarLabels' => 'Show Navigation Bar Labels',
 			'settings.showNavBarLabelsDescription' => 'Display text labels under navigation bar icons',
 			'settings.startupSection' => 'Startup Section',
-			'settings.showExploreTab' => 'Show Explore Tab',
-			'settings.showExploreTabDescription' => 'Display the Explore tab with content from Plex Discover and connected trackers',
+			'settings.showExploreTab' => 'Show Request Tab',
+			'settings.showExploreTabDescription' => 'Display the Request tab with content from Plex Discover and connected trackers',
 			'settings.liveTvDefaultFavorites' => 'Default to Favorite Channels',
 			'settings.liveTvDefaultFavoritesDescription' => 'Show only favorite channels when opening Live TV',
 			'settings.general' => 'General',
@@ -9435,8 +9435,8 @@ extension on Translations {
 			'navigation.libraries' => 'Libraries',
 			'navigation.downloads' => 'Downloads',
 			'navigation.liveTv' => 'Live TV',
-			'navigation.explore' => 'Explore',
-			'explore.title' => 'Explore',
+			'navigation.explore' => 'Request',
+			'explore.title' => 'Request',
 			'explore.selectSource' => 'Select source',
 			'explore.rows.watchlist' => 'Watchlist',
 			'explore.rows.recommendedMovies' => 'Recommended Movies',

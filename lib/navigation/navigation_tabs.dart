@@ -4,6 +4,7 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../i18n/strings.g.dart';
 import '../utils/platform_detector.dart';
+import '../maggioflix_config.dart';
 
 /// Navigation tab identifiers
 enum NavigationTabId { discover, explore, libraries, liveTv, search, downloads, settings }
@@ -48,7 +49,7 @@ class NavigationTab {
   }) {
     return allNavigationTabs.where((tab) {
       if (isOffline && tab.onlineOnly) return false;
-      if (tab.id == NavigationTabId.liveTv && !hasLiveTv) return false;
+      if (tab.id == NavigationTabId.liveTv && (!hasLiveTv || !maggioflixShowLiveTvTab)) return false;
       if (tab.id == NavigationTabId.explore && !hasExplore) return false;
       if (tab.id == NavigationTabId.downloads && PlatformDetector.isAppleTV()) return false;
       return true;
@@ -83,7 +84,7 @@ class NavigationTab {
 const startupSectionTabs = [
   NavigationTabId.discover,
   NavigationTabId.libraries,
-  NavigationTabId.liveTv,
+  if (maggioflixShowLiveTvTab) NavigationTabId.liveTv,
   NavigationTabId.explore,
   NavigationTabId.search,
 ];
@@ -110,7 +111,7 @@ const allNavigationTabs = [
   NavigationTab(
     id: NavigationTabId.explore,
     onlineOnly: true,
-    icon: Symbols.explore_rounded,
+    icon: Symbols.library_add_rounded,
     getLabel: _getExploreLabel,
   ),
   NavigationTab(id: NavigationTabId.search, onlineOnly: true, icon: Symbols.search_rounded, getLabel: _getSearchLabel),

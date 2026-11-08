@@ -14,3 +14,9 @@ const String maggioflixSeerrUrl = 'https://seerr.maggioflix.com';
 /// dei log passano da servizi registrati dal progetto Plezy, che un fork
 /// distribuito non deve usare (vedi TRADEMARKS.md). Restano nascosti.
 const bool maggioflixUsesPlezyServices = false;
+
+/// Accesso iniziale: MaggioFlix usa solo Plex (niente Jellyfin/Emby).
+const bool maggioflixAllowMediaBrowserLogin = false;
+
+/// La scheda Live TV resta nascosta dalla barra di navigazione.
+const bool maggioflixShowLiveTvTab = false;

@@ -362,7 +362,7 @@ class ExploreScreenState extends State<ExploreScreen>
         SliverFillRemaining(
           child: EmptyStateWidget(
             message: t.explore.emptyMessage(source: explore.activeSource?.displayName ?? ''),
-            icon: Symbols.explore_rounded,
+            icon: Symbols.library_add_rounded,
           ),
         ),
       ]);
@@ -523,7 +523,7 @@ class ExploreScreenState extends State<ExploreScreen>
             Center(
               child: EmptyStateWidget(
                 message: t.explore.emptyMessage(source: _explore.activeSource?.displayName ?? ''),
-                icon: Symbols.explore_rounded,
+                icon: Symbols.library_add_rounded,
               ),
             ),
           if (tvHubs.isNotEmpty)

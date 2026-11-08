@@ -473,8 +473,8 @@
     "showNavBarLabels": "Show Navigation Bar Labels",
     "showNavBarLabelsDescription": "Display text labels under navigation bar icons",
     "startupSection": "Startup Section",
-    "showExploreTab": "Show Explore Tab",
-    "showExploreTabDescription": "Display the Explore tab with content from Plex Discover and connected trackers",
+    "showExploreTab": "Show Request Tab",
+    "showExploreTabDescription": "Display the Request tab with content from Plex Discover and connected trackers",
     "liveTvDefaultFavorites": "Default to Favorite Channels",
     "liveTvDefaultFavoritesDescription": "Show only favorite channels when opening Live TV",
     "general": "General",
@@ -1436,10 +1436,10 @@
     "libraries": "Libraries",
     "downloads": "Downloads",
     "liveTv": "Live TV",
-    "explore": "Explore"
+    "explore": "Request"
   },
   "explore": {
-    "title": "Explore",
+    "title": "Request",
     "selectSource": "Select source",
     "rows": {
       "watchlist": "Watchlist",

@@ -33,6 +33,7 @@ import '../services/fullscreen_state_manager.dart';
 import '../theme/mono_tokens.dart';
 import '../widgets/backend_badge.dart';
 import '../i18n/strings.g.dart';
+import '../maggioflix_config.dart';
 
 enum _LibraryNavSection { visible, hidden }
 
@@ -880,7 +881,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
     final isCollapsed = !_shouldExpand;
     final effectiveCollapsedWidth = collapsedWidthForContext(context);
     final horizontalPadding = horizontalPaddingForContext(context, isCollapsed: isCollapsed);
-    final hasLiveTv = context.watch<MultiServerProvider>().hasLiveTv;
+    final hasLiveTv = maggioflixShowLiveTvTab && context.watch<MultiServerProvider>().hasLiveTv;
     // Nullable watch: rail tests (and any host without the profile session
     // scope) simply never show the Explore item.
     final hasExploreSource = context.watch<CatalogSourcesProvider?>()?.hasAnySource ?? false;
@@ -1041,7 +1042,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
                                         isCollapsed: isCollapsed,
                                       ),
                                       const SizedBox(height: _itemGap),
-                                      if (context.watch<MultiServerProvider>().hasLiveTv) ...[
+                                      if (maggioflixShowLiveTvTab && context.watch<MultiServerProvider>().hasLiveTv) ...[
                                         _buildNavItem(
                                           icon: Symbols.live_tv_rounded,
                                           selectedIcon: Symbols.live_tv_rounded,
@@ -1055,8 +1056,8 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
                                       ],
                                       if (hasExplore) ...[
                                         _buildNavItem(
-                                          icon: Symbols.explore_rounded,
-                                          selectedIcon: Symbols.explore_rounded,
+                                          icon: Symbols.library_add_rounded,
+                                          selectedIcon: Symbols.library_add_rounded,
                                           label: Translations.of(context).navigation.explore,
                                           isSelected: widget.selectedTab == NavigationTabId.explore,
                                           onTap: () => widget.onDestinationSelected(NavigationTabId.explore),

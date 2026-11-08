@@ -8,7 +8,9 @@ import '../models/seerr/seerr_session.dart';
 import '../profiles/active_plex_token.dart';
 import '../profiles/active_profile_provider.dart';
 import '../profiles/profile_connection_registry.dart';
+import '../maggioflix_config.dart';
 import '../services/seerr/seerr_auth_service.dart';
+import '../services/seerr/seerr_constants.dart';
 import '../services/seerr/seerr_client.dart';
 import '../services/seerr/seerr_session_store.dart';
 import '../utils/app_logger.dart';
@@ -98,6 +100,29 @@ class SeerrAccountProvider extends ChangeNotifier with DisposableChangeNotifierM
     final loaded = await _store.load(userUuid);
     _setSessionAndRebind(userUuid, generation, loaded);
     if (_isCurrentBinding(userUuid, generation)) unawaited(refreshUser());
+    if (loaded == null && _isCurrentBinding(userUuid, generation)) unawaited(maggioflixTryAutoConnect());
+  }
+
+  /// MaggioFlix: se il profilo non ha ancora Seerr collegato, lo collega da
+  /// solo con l'account Plex del profilo e l'indirizzo Seerr di MaggioFlix.
+  /// In caso di errore non fa nulla: resta il collegamento manuale.
+  Future<void> maggioflixTryAutoConnect() async {
+    if (isDisposed || _session != null || maggioflixSeerrUrl.isEmpty) return;
+    final userUuid = _activeUserUuid;
+    try {
+      final token = await resolvePlexToken();
+      if (token == null || token.isEmpty) return;
+      final reached = await authService.probeFirstReachable(maggioflixSeerrUrl);
+      final settings = reached.settings;
+      final type = settings.mediaServerType;
+      if (!settings.mediaServerLogin || (type != null && type != SeerrMediaServerType.plex)) return;
+      final session = await authService.signInWithPlex(baseUrl: reached.baseUrl, plexToken: token);
+      if (isDisposed || _session != null || _activeUserUuid != userUuid) return;
+      await adoptSession(session.copyWith(instanceLabel: settings.instanceLabel, product: settings.product));
+      appLogger.i('MaggioFlix: Seerr collegato in automatico');
+    } catch (e) {
+      appLogger.w('MaggioFlix: collegamento automatico a Seerr non riuscito', error: e);
+    }
   }
 
   /// A stored session's permissions and display name date from sign-in;

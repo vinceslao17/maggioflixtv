@@ -32,6 +32,7 @@ import '../widgets/backend_badge.dart';
 import '../widgets/dialog_action_button.dart';
 import 'auth/plex_pin_auth_flow.dart';
 import 'profile/profile_switch_screen.dart';
+import '../maggioflix_config.dart';
 import 'settings/add_jellyfin_screen.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -417,6 +418,7 @@ class _AuthScreenState extends State<AuthScreen> {
             ),
           ),
         ],
+        if (maggioflixAllowMediaBrowserLogin) ...[
         const SizedBox(height: 24),
         Row(
           children: [
@@ -453,6 +455,7 @@ class _AuthScreenState extends State<AuthScreen> {
             label: Text(t.auth.connectToMediaBrowser(product: embyDialect.productName)),
           ),
         ),
+        ],
         if (kDebugMode) ...[
           const SizedBox(height: 12),
           FocusableButton(

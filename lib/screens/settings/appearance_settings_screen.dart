@@ -138,7 +138,7 @@ class AppearanceSettingsScreen extends StatelessWidget {
             if (hasExplore)
               SettingSwitchTile(
                 pref: SettingsService.showExploreTab,
-                icon: Symbols.explore_rounded,
+                icon: Symbols.library_add_rounded,
                 title: t.settings.showExploreTab,
                 subtitle: t.settings.showExploreTabDescription,
               ),
