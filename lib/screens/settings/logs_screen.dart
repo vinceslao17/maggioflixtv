@@ -20,6 +20,7 @@ import '../../utils/dialogs.dart';
 import '../../main.dart' show gitCommit;
 import '../../services/background_work_diagnostics_service.dart';
 import '../../services/device_performance.dart';
+import '../../maggioflix_config.dart';
 import '../../services/log_upload_service.dart';
 import '../../services/startup_diagnostics.dart';
 import '../../services/video_decode_capabilities.dart';
@@ -483,7 +484,8 @@ class _LogsScreenState extends State<LogsScreen> with MountedSetStateMixin {
                                 tooltip: t.common.refresh,
                                 onPressed: _loadLogs,
                               ),
-                              FocusableAction(
+                              if (maggioflixUsesPlezyServices)
+                                FocusableAction(
                                 icon: Symbols.upload_rounded,
                                 tooltip: t.logs.uploadLogs,
                                 onPressed: _hasDiagnostics ? _uploadLogs : null,

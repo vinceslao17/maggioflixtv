@@ -29,7 +29,7 @@ import '../system_shelf_service.dart';
 sealed class DeepLink {
   const DeepLink({this.profile});
 
-  static const scheme = 'plezy';
+  static const scheme = 'maggioflix';
 
   /// The profile the link names, as written in the link.
   final String? profile;

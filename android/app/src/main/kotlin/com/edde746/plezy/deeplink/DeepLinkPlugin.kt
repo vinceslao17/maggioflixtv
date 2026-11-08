@@ -15,7 +15,7 @@ class DeepLinkPlugin :
   MethodChannel.MethodCallHandler {
   companion object {
     private const val METHOD_CHANNEL = "com.plezy/deep_link"
-    private const val SCHEME = "plezy"
+    private const val SCHEME = "maggioflix"
 
     // One slot, latest link wins. It lives here rather than on the instance so a
     // link Dart has not accepted yet survives the engine being re-created.

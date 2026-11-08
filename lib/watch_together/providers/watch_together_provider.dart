@@ -71,7 +71,7 @@ class WatchTogetherProvider extends ChangeNotifier {
        _resolver = LibraryResolver(clientFor: clientFor ?? _noClient, findCopies: findCopies ?? _noCopies);
 
   static MediaServerClient? _noClient(String serverId) => null;
-  static String _defaultName() => 'Plezy';
+  static String _defaultName() => 'MaggioFlix';
   static String? _noProfile() => null;
   static String? _relaySetting() => SettingsService.instanceOrNull?.read(SettingsService.watchPartyRelayUrl);
   static Future<LibraryLookupResult> _noCopies(TitleQuery query, {AbortController? abort}) async => (

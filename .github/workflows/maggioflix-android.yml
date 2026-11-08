@@ -1,0 +1,125 @@
+name: MaggioFlix Android
+
+# Compila l'APK di MaggioFlix a ogni modifica su main (o a mano dalla scheda
+# Actions) e lo pubblica come release, così l'ultima versione si scarica
+# sempre dallo stesso indirizzo:
+#   https://github.com/<account>/<repo>/releases/latest/download/maggioflix-arm64-v8a.apk
+#   https://github.com/<account>/<repo>/releases/latest/download/maggioflix-armeabi-v7a.apk
+#
+# Firma: servono i secret MAGGIOFLIX_KEYSTORE_BASE64 e MAGGIOFLIX_KEYSTORE_PASSWORD
+# (alias della chiave: maggioflix). Senza una firma fissa gli aggiornamenti non
+# si installerebbero sopra la versione precedente.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "website/**"
+      - "ios/**"
+      - "macos/**"
+      - "tvos/**"
+      - "windows/**"
+      - "linux/**"
+      - "Casks/**"
+
+concurrency:
+  group: maggioflix-android
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.47.1"
+
+jobs:
+  apk:
+    if: github.repository != 'edde746/plezy'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Check signing secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.MAGGIOFLIX_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.MAGGIOFLIX_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::Mancano i secret MAGGIOFLIX_KEYSTORE_BASE64 / MAGGIOFLIX_KEYSTORE_PASSWORD (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Cache Pub and Gradle
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.pub-cache
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: maggioflix-${{ runner.os }}-${{ hashFiles('pubspec.lock', '**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: maggioflix-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile --no-example
+
+      - name: Configure signing
+        env:
+          KEYSTORE_B64: ${{ secrets.MAGGIOFLIX_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.MAGGIOFLIX_KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 --decode > android/app/upload-keystore.jks
+          cat > android/key.properties << EOF
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEYSTORE_PASSWORD
+          keyAlias=maggioflix
+          storeFile=upload-keystore.jks
+          EOF
+
+      - name: Build APKs
+        run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --dart-define=GIT_COMMIT=${{ github.sha }}
+
+      - name: Clean up keystore
+        if: always()
+        run: rm -f android/app/upload-keystore.jks android/key.properties
+
+      - name: Collect APKs
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/maggioflix-arm64-v8a.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/maggioflix-armeabi-v7a.apk
+          ls -lh dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: maggioflix-apk
+          path: dist/*.apk
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          tag="maggioflix-v${version}-${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" dist/*.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "MaggioFlix ${version} (build ${GITHUB_RUN_NUMBER})" \
+            --notes "Basato su Plezy ${version} (https://github.com/edde746/plezy), licenza GPL-3.0. Commit: ${GITHUB_SHA}" \
+            --latest

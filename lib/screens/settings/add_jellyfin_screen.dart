@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../maggioflix_config.dart';
 import '../../connection/connection.dart';
 import '../../connection/connection_registry.dart';
 import '../../exceptions/media_server_exceptions.dart';
@@ -106,7 +107,9 @@ class AddJellyfinScreen extends StatefulWidget {
 
 class _AddJellyfinScreenState extends State<AddJellyfinScreen>
     with AsyncFormStateMixin, QuickConnectFlowMixin, ControllerDisposerMixin {
-  late final _urlController = createTextEditingController();
+  late final _urlController = createTextEditingController(
+    text: widget.dialect == MediaBrowserDialect.jellyfin ? maggioflixJellyfinUrls : null,
+  );
   late final _usernameController = createTextEditingController();
   late final _passwordController = createTextEditingController();
   final _urlFocus = FocusNode(debugLabel: 'AddJellyfin:Url');

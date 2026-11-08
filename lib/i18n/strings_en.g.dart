@@ -105,8 +105,8 @@ class Translations$app$en {
 
 	// Translations
 
-	/// en: 'Plezy'
-	String get title => 'Plezy';
+	/// en: 'MaggioFlix'
+	String get title => 'MaggioFlix';
 }
 
 // Path: appIcon
@@ -135,11 +135,11 @@ class Translations$appIcon$en {
 	/// en: 'Couldn't change the app icon'
 	String get changeFailed => 'Couldn\'t change the app icon';
 
-	/// en: 'The new icon appears on your home screen once you leave Plezy.'
-	String get launcherHint => 'The new icon appears on your home screen once you leave Plezy.';
+	/// en: 'The new icon appears on your home screen once you leave MaggioFlix.'
+	String get launcherHint => 'The new icon appears on your home screen once you leave MaggioFlix.';
 
-	/// en: 'The new banner appears once you leave Plezy. Android TV can keep showing the old one until the TV restarts.'
-	String get tvLauncherHint => 'The new banner appears once you leave Plezy. Android TV can keep showing the old one until the TV restarts.';
+	/// en: 'The new banner appears once you leave MaggioFlix. Android TV can keep showing the old one until the TV restarts.'
+	String get tvLauncherHint => 'The new banner appears once you leave MaggioFlix. Android TV can keep showing the old one until the TV restarts.';
 
 	late final Translations$appIcon$names$en names = Translations$appIcon$names$en.internal(_root);
 }
@@ -197,8 +197,8 @@ class Translations$auth$en {
 	/// en: 'Quick Connect expired. Try again.'
 	String get quickConnectExpired => 'Quick Connect expired. Try again.';
 
-	/// en: 'Plezy could not safely recover local sign-in and pending playback data. Please sign in again.'
-	String get localDataRecoveryRequired => 'Plezy could not safely recover local sign-in and pending playback data. Please sign in again.';
+	/// en: 'MaggioFlix could not safely recover local sign-in and pending playback data. Please sign in again.'
+	String get localDataRecoveryRequired => 'MaggioFlix could not safely recover local sign-in and pending playback data. Please sign in again.';
 
 	/// en: 'The Plex PIN check was rejected'
 	String get pinCheckRejected => 'The Plex PIN check was rejected';
@@ -447,8 +447,8 @@ class Translations$supporter$en {
 	/// en: 'App icons'
 	String get appIcons => 'App icons';
 
-	/// en: 'Choose an alternate Plezy icon'
-	String get appIconsDescription => 'Choose an alternate Plezy icon';
+	/// en: 'Choose an alternate MaggioFlix icon'
+	String get appIconsDescription => 'Choose an alternate MaggioFlix icon';
 
 	/// en: 'Buy for ${price}'
 	String buy({required Object price}) => 'Buy for ${price}';
@@ -491,8 +491,8 @@ class Translations$settings$en {
 	/// en: 'Settings'
 	String get title => 'Settings';
 
-	/// en: 'Support Plezy'
-	String get supportDeveloper => 'Support Plezy';
+	/// en: 'Support MaggioFlix'
+	String get supportDeveloper => 'Support MaggioFlix';
 
 	/// en: 'Donate via Liberapay to fund development'
 	String get supportDeveloperDescription => 'Donate via Liberapay to fund development';
@@ -932,8 +932,8 @@ class Translations$settings$en {
 	/// en: 'Settings imported'
 	String get importSettingsSuccess => 'Settings imported';
 
-	/// en: 'This file isn't a valid Plezy settings export'
-	String get importSettingsInvalidFile => 'This file isn\'t a valid Plezy settings export';
+	/// en: 'This file isn't a valid MaggioFlix settings export'
+	String get importSettingsInvalidFile => 'This file isn\'t a valid MaggioFlix settings export';
 
 	/// en: 'Sign in before importing settings'
 	String get importSettingsNoUser => 'Sign in before importing settings';
@@ -1343,8 +1343,8 @@ class Translations$settings$en {
 	/// en: 'Start in fullscreen'
 	String get startInFullscreen => 'Start in fullscreen';
 
-	/// en: 'Open Plezy in fullscreen mode at launch'
-	String get startInFullscreenDescription => 'Open Plezy in fullscreen mode at launch';
+	/// en: 'Open MaggioFlix in fullscreen mode at launch'
+	String get startInFullscreenDescription => 'Open MaggioFlix in fullscreen mode at launch';
 
 	/// en: 'Exit fullscreen on player close'
 	String get exitFullscreenOnPlayerClose => 'Exit fullscreen on player close';
@@ -1493,8 +1493,8 @@ class Translations$settings$en {
 	/// en: 'Per show or movie'
 	String get playerScopeTitle => 'Per show or movie';
 
-	/// en: 'Export Plezy settings'
-	String get exportDialogTitle => 'Export Plezy settings';
+	/// en: 'Export MaggioFlix settings'
+	String get exportDialogTitle => 'Export MaggioFlix settings';
 }
 
 // Path: themeEditor
@@ -2087,11 +2087,11 @@ class Translations$mediaMenu$en {
 		other: '${n} other episodes are stored in the same file and will be deleted too:',
 	);
 
-	/// en: 'Plezy could not check which files this will remove, so it may delete more than the item named above. Cancel and try again, or delete anyway.'
-	String get deleteScopeUnverifiedProbeFailed => 'Plezy could not check which files this will remove, so it may delete more than the item named above. Cancel and try again, or delete anyway.';
+	/// en: 'MaggioFlix could not check which files this will remove, so it may delete more than the item named above. Cancel and try again, or delete anyway.'
+	String get deleteScopeUnverifiedProbeFailed => 'MaggioFlix could not check which files this will remove, so it may delete more than the item named above. Cancel and try again, or delete anyway.';
 
-	/// en: 'Your server did not provide file details for this item, so Plezy cannot check which files this will remove. It may delete more than the item named above.'
-	String get deleteScopeUnverifiedNoFileInfo => 'Your server did not provide file details for this item, so Plezy cannot check which files this will remove. It may delete more than the item named above.';
+	/// en: 'Your server did not provide file details for this item, so MaggioFlix cannot check which files this will remove. It may delete more than the item named above.'
+	String get deleteScopeUnverifiedNoFileInfo => 'Your server did not provide file details for this item, so MaggioFlix cannot check which files this will remove. It may delete more than the item named above.';
 
 	/// en: 'Media item deleted successfully'
 	String get mediaDeletedSuccessfully => 'Media item deleted successfully';
@@ -2914,8 +2914,8 @@ class Translations$profiles$en {
 
 	// Translations
 
-	/// en: 'Add Plezy profile'
-	String get addPlezyProfile => 'Add Plezy profile';
+	/// en: 'Add MaggioFlix profile'
+	String get addPlezyProfile => 'Add MaggioFlix profile';
 
 	/// en: 'Switching profile…'
 	String get switchingProfile => 'Switching profile…';
@@ -3148,8 +3148,8 @@ class Translations$connections$en {
 	/// en: 'Edit ${product} connection'
 	String editMediaBrowserTitle({required Object product}) => 'Edit ${product} connection';
 
-	/// en: 'Add or remove URLs for ${serverName}. Plezy will use the reachable URL with the lowest latency.'
-	String editMediaBrowserIntro({required Object serverName}) => 'Add or remove URLs for ${serverName}. Plezy will use the reachable URL with the lowest latency.';
+	/// en: 'Add or remove URLs for ${serverName}. MaggioFlix will use the reachable URL with the lowest latency.'
+	String editMediaBrowserIntro({required Object serverName}) => 'Add or remove URLs for ${serverName}. MaggioFlix will use the reachable URL with the lowest latency.';
 }
 
 // Path: accountPreferences
@@ -3172,8 +3172,8 @@ class Translations$accountPreferences$en {
 	/// en: 'Every account stores its own preferences. Pick the one to edit.'
 	String get pickAccount => 'Every account stores its own preferences. Pick the one to edit.';
 
-	/// en: 'These options are saved on the account itself, so every app signed in to it uses them — including Plezy on your other devices.'
-	String get storedOnAccount => 'These options are saved on the account itself, so every app signed in to it uses them — including Plezy on your other devices.';
+	/// en: 'These options are saved on the account itself, so every app signed in to it uses them — including MaggioFlix on your other devices.'
+	String get storedOnAccount => 'These options are saved on the account itself, so every app signed in to it uses them — including MaggioFlix on your other devices.';
 
 	/// en: 'No accounts to configure'
 	String get noAccounts => 'No accounts to configure';
@@ -3651,14 +3651,14 @@ class Translations$startup$en {
 
 	// Translations
 
-	/// en: 'Plezy could not start'
-	String get failedTitle => 'Plezy could not start';
+	/// en: 'MaggioFlix could not start'
+	String get failedTitle => 'MaggioFlix could not start';
 
 	/// en: 'Something went wrong during startup. The details below identify what failed.'
 	String get failedBody => 'Something went wrong during startup. The details below identify what failed.';
 
-	/// en: 'Plezy's saved settings file is damaged and has to be rebuilt before Plezy can start. Retrying will not help — choose Repair storage.'
-	String get failedBodyRepairable => 'Plezy\'s saved settings file is damaged and has to be rebuilt before Plezy can start. Retrying will not help — choose Repair storage.';
+	/// en: 'MaggioFlix's saved settings file is damaged and has to be rebuilt before MaggioFlix can start. Retrying will not help — choose Repair storage.'
+	String get failedBodyRepairable => 'MaggioFlix\'s saved settings file is damaged and has to be rebuilt before MaggioFlix can start. Retrying will not help — choose Repair storage.';
 
 	/// en: 'Step'
 	String get phaseLabel => 'Step';
@@ -3684,8 +3684,8 @@ class Translations$startup$en {
 	/// en: 'Repair stored data?'
 	String get repairTitle => 'Repair stored data?';
 
-	/// en: 'Plezy's settings file is damaged and cannot be read. Repairing resets every setting to its default.'
-	String get repairBodyCommon => 'Plezy\'s settings file is damaged and cannot be read. Repairing resets every setting to its default.';
+	/// en: 'MaggioFlix's settings file is damaged and cannot be read. Repairing resets every setting to its default.'
+	String get repairBodyCommon => 'MaggioFlix\'s settings file is damaged and cannot be read. Repairing resets every setting to its default.';
 
 	/// en: 'One saved sign-in is damaged and cannot be read. Repairing removes just that one; your other settings are left alone.'
 	String get repairBodyOneCredential => 'One saved sign-in is damaged and cannot be read. Repairing removes just that one; your other settings are left alone.';
@@ -3696,8 +3696,8 @@ class Translations$startup$en {
 	/// en: 'The key protecting your saved sign-ins cannot be recovered from this file, so you will have to sign in to every server and profile again. Nothing on your media server is affected.'
 	String get repairBodySignInsLost => 'The key protecting your saved sign-ins cannot be recovered from this file, so you will have to sign in to every server and profile again. Nothing on your media server is affected.';
 
-	/// en: 'Trackers (MAL, AniList, Simkl, Trakt) and Seerr are stored separately and may or may not survive. Plezy will tell you exactly what it kept.'
-	String get repairBodySessionsUncertain => 'Trackers (MAL, AniList, Simkl, Trakt) and Seerr are stored separately and may or may not survive. Plezy will tell you exactly what it kept.';
+	/// en: 'Trackers (MAL, AniList, Simkl, Trakt) and Seerr are stored separately and may or may not survive. MaggioFlix will tell you exactly what it kept.'
+	String get repairBodySessionsUncertain => 'Trackers (MAL, AniList, Simkl, Trakt) and Seerr are stored separately and may or may not survive. MaggioFlix will tell you exactly what it kept.';
 
 	/// en: 'Repair'
 	String get repairConfirm => 'Repair';
@@ -3708,11 +3708,11 @@ class Translations$startup$en {
 	/// en: 'Storage repaired — restart required'
 	String get repairNeedsRestart => 'Storage repaired — restart required';
 
-	/// en: 'Your data was repaired, but Plezy has to start fresh before it can use it. Close Plezy and open it again.'
-	String get restartRequiredBody => 'Your data was repaired, but Plezy has to start fresh before it can use it. Close Plezy and open it again.';
+	/// en: 'Your data was repaired, but MaggioFlix has to start fresh before it can use it. Close MaggioFlix and open it again.'
+	String get restartRequiredBody => 'Your data was repaired, but MaggioFlix has to start fresh before it can use it. Close MaggioFlix and open it again.';
 
-	/// en: 'Quit Plezy'
-	String get quitPlezy => 'Quit Plezy';
+	/// en: 'Quit MaggioFlix'
+	String get quitPlezy => 'Quit MaggioFlix';
 
 	/// en: 'Repair failed'
 	String get repairFailed => 'Repair failed';
@@ -3738,8 +3738,8 @@ class Translations$startup$en {
 	/// en: 'Copy deleted.'
 	String get backupDeleted => 'Copy deleted.';
 
-	/// en: 'Plezy failed to start last time'
-	String get previousFailureTitle => 'Plezy failed to start last time';
+	/// en: 'MaggioFlix failed to start last time'
+	String get previousFailureTitle => 'MaggioFlix failed to start last time';
 }
 
 // Path: licenses
@@ -4472,8 +4472,8 @@ class Translations$watchTogether$en {
 	/// en: 'Invite copied. Paste it into a message.'
 	String get inviteCopied => 'Invite copied. Paste it into a message.';
 
-	/// en: 'Join my Watch Together room in Plezy: open Watch Together, choose Join Room and enter ${code}.'
-	String inviteMessage({required Object code}) => 'Join my Watch Together room in Plezy: open Watch Together, choose Join Room and enter ${code}.';
+	/// en: 'Join my Watch Together room in MaggioFlix: open Watch Together, choose Join Room and enter ${code}.'
+	String inviteMessage({required Object code}) => 'Join my Watch Together room in MaggioFlix: open Watch Together, choose Join Room and enter ${code}.';
 
 	/// en: 'Open Watch Together session controls'
 	String get openSessionControls => 'Open Watch Together session controls';
@@ -4550,8 +4550,8 @@ class Translations$watchTogether$en {
 	/// en: 'You don't have this video'
 	String get unavailableTitle => 'You don\'t have this video';
 
-	/// en: 'Plezy couldn't find it in your libraries. Pick a copy yourself or search again.'
-	String get unavailableDescription => 'Plezy couldn\'t find it in your libraries. Pick a copy yourself or search again.';
+	/// en: 'MaggioFlix couldn't find it in your libraries. Pick a copy yourself or search again.'
+	String get unavailableDescription => 'MaggioFlix couldn\'t find it in your libraries. Pick a copy yourself or search again.';
 
 	/// en: 'Choose a Copy'
 	String get chooseCopy => 'Choose a Copy';
@@ -5742,8 +5742,8 @@ class Translations$trakt$en {
 	/// en: 'Disconnect Trakt account?'
 	String get disconnectConfirm => 'Disconnect Trakt account?';
 
-	/// en: 'Plezy will stop sending events to Trakt. You can reconnect any time.'
-	String get disconnectConfirmBody => 'Plezy will stop sending events to Trakt. You can reconnect any time.';
+	/// en: 'MaggioFlix will stop sending events to Trakt. You can reconnect any time.'
+	String get disconnectConfirmBody => 'MaggioFlix will stop sending events to Trakt. You can reconnect any time.';
 
 	/// en: 'Real-time scrobbling'
 	String get scrobble => 'Real-time scrobbling';
@@ -5754,8 +5754,8 @@ class Translations$trakt$en {
 	/// en: 'Sync watched status'
 	String get watchedSync => 'Sync watched status';
 
-	/// en: 'When you mark items as watched in Plezy, they are also marked as watched on Trakt.'
-	String get watchedSyncDescription => 'When you mark items as watched in Plezy, they are also marked as watched on Trakt.';
+	/// en: 'When you mark items as watched in MaggioFlix, they are also marked as watched on Trakt.'
+	String get watchedSyncDescription => 'When you mark items as watched in MaggioFlix, they are also marked as watched on Trakt.';
 }
 
 // Path: seerr
@@ -5793,8 +5793,8 @@ class Translations$seerr$en {
 	/// en: 'Email'
 	String get email => 'Email';
 
-	/// en: 'This Seerr instance offers no sign-in method Plezy supports.'
-	String get noSignInMethods => 'This Seerr instance offers no sign-in method Plezy supports.';
+	/// en: 'This Seerr instance offers no sign-in method MaggioFlix supports.'
+	String get noSignInMethods => 'This Seerr instance offers no sign-in method MaggioFlix supports.';
 
 	/// en: 'Instance'
 	String get instance => 'Instance';
@@ -5802,8 +5802,8 @@ class Translations$seerr$en {
 	/// en: 'Disconnect Seerr?'
 	String get disconnectConfirm => 'Disconnect Seerr?';
 
-	/// en: 'Plezy will forget this Seerr instance. Reconnect any time.'
-	String get disconnectConfirmBody => 'Plezy will forget this Seerr instance. Reconnect any time.';
+	/// en: 'MaggioFlix will forget this Seerr instance. Reconnect any time.'
+	String get disconnectConfirmBody => 'MaggioFlix will forget this Seerr instance. Reconnect any time.';
 
 	/// en: 'Request'
 	String get request => 'Request';
@@ -5877,8 +5877,8 @@ class Translations$seerr$en {
 	/// en: 'No Seerr instance at ${url} (HTTP ${status})'
 	String noInstanceAtUrl({required Object url, required Object status}) => 'No Seerr instance at ${url} (HTTP ${status})';
 
-	/// en: 'An authenticating reverse proxy (SSO or HTTP auth) answered instead of Seerr. Plezy cannot sign in through it: let Seerr's /api/v1 path bypass the proxy for this app, or use an address that reaches Seerr directly.'
-	String get behindAuthProxy => 'An authenticating reverse proxy (SSO or HTTP auth) answered instead of Seerr. Plezy cannot sign in through it: let Seerr\'s /api/v1 path bypass the proxy for this app, or use an address that reaches Seerr directly.';
+	/// en: 'An authenticating reverse proxy (SSO or HTTP auth) answered instead of Seerr. MaggioFlix cannot sign in through it: let Seerr's /api/v1 path bypass the proxy for this app, or use an address that reaches Seerr directly.'
+	String get behindAuthProxy => 'An authenticating reverse proxy (SSO or HTTP auth) answered instead of Seerr. MaggioFlix cannot sign in through it: let Seerr\'s /api/v1 path bypass the proxy for this app, or use an address that reaches Seerr directly.';
 
 	/// en: 'Enter a server address like https://seerr.example.com'
 	String get invalidUrl => 'Enter a server address like https://seerr.example.com';
@@ -5949,8 +5949,8 @@ class Translations$services$en {
 	/// en: 'Disconnect ${service}?'
 	String disconnectConfirm({required Object service}) => 'Disconnect ${service}?';
 
-	/// en: 'Plezy will stop updating ${service}. Reconnect any time.'
-	String disconnectConfirmBody({required Object service}) => 'Plezy will stop updating ${service}. Reconnect any time.';
+	/// en: 'MaggioFlix will stop updating ${service}. Reconnect any time.'
+	String disconnectConfirmBody({required Object service}) => 'MaggioFlix will stop updating ${service}. Reconnect any time.';
 
 	/// en: 'Couldn't connect to ${service}. Try again.'
 	String connectFailed({required Object service}) => 'Couldn\'t connect to ${service}. Try again.';
@@ -6121,8 +6121,8 @@ class Translations$deepLinks$en {
 
 	// Translations
 
-	/// en: 'This Plezy link isn't valid.'
-	String get invalid => 'This Plezy link isn\'t valid.';
+	/// en: 'This MaggioFlix link isn't valid.'
+	String get invalid => 'This MaggioFlix link isn\'t valid.';
 
 	/// en: 'No profile matches "${profile}".'
 	String profileNotFound({required Object profile}) => 'No profile matches "${profile}".';
@@ -7621,8 +7621,8 @@ class Translations$watchTogether$errors$en {
 	/// en: 'Too many attempts. Wait a moment and try again.'
 	String get rateLimited => 'Too many attempts. Wait a moment and try again.';
 
-	/// en: 'This version of Plezy can't use the relay. Update the app.'
-	String get clientBlocked => 'This version of Plezy can\'t use the relay. Update the app.';
+	/// en: 'This version of MaggioFlix can't use the relay. Update the app.'
+	String get clientBlocked => 'This version of MaggioFlix can\'t use the relay. Update the app.';
 
 	/// en: 'Only the host can do that.'
 	String get forbidden => 'Only the host can do that.';
@@ -7666,17 +7666,17 @@ class Translations$downloads$backgroundWarning$en {
 	/// en: 'Background downloads may be limited'
 	String get sheetTitleDegraded => 'Background downloads may be limited';
 
-	/// en: 'Android is preventing Plezy from downloading reliably in the background.'
-	String get sheetIntro => 'Android is preventing Plezy from downloading reliably in the background.';
+	/// en: 'Android is preventing MaggioFlix from downloading reliably in the background.'
+	String get sheetIntro => 'Android is preventing MaggioFlix from downloading reliably in the background.';
 
-	/// en: 'Your device is limiting when Plezy can download in the background.'
-	String get sheetIntroDegraded => 'Your device is limiting when Plezy can download in the background.';
+	/// en: 'Your device is limiting when MaggioFlix can download in the background.'
+	String get sheetIntroDegraded => 'Your device is limiting when MaggioFlix can download in the background.';
 
-	/// en: 'Plezy's background usage is restricted. Set its battery or background usage to "Unrestricted".'
-	String get reasonBackgroundRestricted => 'Plezy\'s background usage is restricted. Set its battery or background usage to "Unrestricted".';
+	/// en: 'MaggioFlix's background usage is restricted. Set its battery or background usage to "Unrestricted".'
+	String get reasonBackgroundRestricted => 'MaggioFlix\'s background usage is restricted. Set its battery or background usage to "Unrestricted".';
 
-	/// en: 'Android has put Plezy in a restricted standby state. Set its battery usage to "Unrestricted".'
-	String get reasonStandbyRestricted => 'Android has put Plezy in a restricted standby state. Set its battery usage to "Unrestricted".';
+	/// en: 'Android has put MaggioFlix in a restricted standby state. Set its battery usage to "Unrestricted".'
+	String get reasonStandbyRestricted => 'Android has put MaggioFlix in a restricted standby state. Set its battery usage to "Unrestricted".';
 
 	/// en: 'Download notifications are turned off, so progress and controls may be unavailable.'
 	String get reasonDownloadChannelBlocked => 'Download notifications are turned off, so progress and controls may be unavailable.';
@@ -7687,8 +7687,8 @@ class Translations$downloads$backgroundWarning$en {
 	/// en: 'Data Saver is on, which blocks background downloads on mobile data. Downloads should still run on Wi-Fi.'
 	String get reasonDataSaver => 'Data Saver is on, which blocks background downloads on mobile data. Downloads should still run on Wi-Fi.';
 
-	/// en: 'Downloads repeatedly stopped while Plezy was in the background. Check Plezy's battery or background usage settings.'
-	String get reasonOemUnknown => 'Downloads repeatedly stopped while Plezy was in the background. Check Plezy\'s battery or background usage settings.';
+	/// en: 'Downloads repeatedly stopped while MaggioFlix was in the background. Check MaggioFlix's battery or background usage settings.'
+	String get reasonOemUnknown => 'Downloads repeatedly stopped while MaggioFlix was in the background. Check MaggioFlix\'s battery or background usage settings.';
 
 	/// en: 'Open settings'
 	String get openSettings => 'Open settings';
@@ -7798,8 +7798,8 @@ class Translations$companionRemote$pairing$en {
 
 	// Translations
 
-	/// en: 'Plezy devices with the same Plex account appear here'
-	String get discoveryDescription => 'Plezy devices with the same Plex account appear here';
+	/// en: 'MaggioFlix devices with the same Plex account appear here'
+	String get discoveryDescription => 'MaggioFlix devices with the same Plex account appear here';
 
 	/// en: '192.168.1.100:48632'
 	String get hostAddressHint => '192.168.1.100:48632';
@@ -7813,8 +7813,8 @@ class Translations$companionRemote$pairing$en {
 	/// en: 'No devices found on your network'
 	String get noDevicesFound => 'No devices found on your network';
 
-	/// en: 'Open Plezy on desktop and use the same Wi-Fi'
-	String get noDevicesHint => 'Open Plezy on desktop and use the same Wi-Fi';
+	/// en: 'Open MaggioFlix on desktop and use the same Wi-Fi'
+	String get noDevicesHint => 'Open MaggioFlix on desktop and use the same Wi-Fi';
 
 	/// en: 'Available Devices'
 	String get availableDevices => 'Available Devices';
@@ -7834,8 +7834,8 @@ class Translations$companionRemote$pairing$en {
 	/// en: 'Connection timed out. Use the same network on both devices.'
 	String get connectionTimedOut => 'Connection timed out. Use the same network on both devices.';
 
-	/// en: 'Device not found. Make sure Plezy is running on the host.'
-	String get sessionNotFound => 'Device not found. Make sure Plezy is running on the host.';
+	/// en: 'Device not found. Make sure MaggioFlix is running on the host.'
+	String get sessionNotFound => 'Device not found. Make sure MaggioFlix is running on the host.';
 
 	/// en: 'Authentication failed. Both devices need the same Plex account.'
 	String get authFailed => 'Authentication failed. Both devices need the same Plex account.';
@@ -8002,8 +8002,8 @@ class Translations$services$simklReconnect$en {
 	/// en: 'Reconnect Simkl'
 	String get title => 'Reconnect Simkl';
 
-	/// en: 'Simkl is retiring the sign-in method this connection uses. Reconnecting opens simkl.com to approve Plezy — Plezy never sees your password. Your watch history stays on Simkl.'
-	String get subtitle => 'Simkl is retiring the sign-in method this connection uses. Reconnecting opens simkl.com to approve Plezy — Plezy never sees your password. Your watch history stays on Simkl.';
+	/// en: 'Simkl is retiring the sign-in method this connection uses. Reconnecting opens simkl.com to approve MaggioFlix — MaggioFlix never sees your password. Your watch history stays on Simkl.'
+	String get subtitle => 'Simkl is retiring the sign-in method this connection uses. Reconnecting opens simkl.com to approve MaggioFlix — MaggioFlix never sees your password. Your watch history stays on Simkl.';
 }
 
 // Path: services.deviceCode
@@ -8014,8 +8014,8 @@ class Translations$services$deviceCode$en {
 
 	// Translations
 
-	/// en: 'Activate Plezy on ${service}'
-	String title({required Object service}) => 'Activate Plezy on ${service}';
+	/// en: 'Activate MaggioFlix on ${service}'
+	String title({required Object service}) => 'Activate MaggioFlix on ${service}';
 
 	/// en: 'Scan the QR code, or visit the address below and enter this code:'
 	String get instructions => 'Scan the QR code, or visit the address below and enter this code:';
@@ -8119,15 +8119,15 @@ class Translations$services$libraryFilter$en {
 extension on Translations {
 	dynamic _flatMapFunction(String path) {
 		return switch (path) {
-			'app.title' => 'Plezy',
+			'app.title' => 'MaggioFlix',
 			'appIcon.title' => 'App icon',
 			'appIcon.defaultIcon' => 'Default',
 			'appIcon.current' => 'Current icon',
 			'appIcon.locked' => 'Part of the Theme & Icon Pack',
 			'appIcon.lockedHint' => 'Alternate icons are part of the Theme & Icon Pack.',
 			'appIcon.changeFailed' => 'Couldn\'t change the app icon',
-			'appIcon.launcherHint' => 'The new icon appears on your home screen once you leave Plezy.',
-			'appIcon.tvLauncherHint' => 'The new banner appears once you leave Plezy. Android TV can keep showing the old one until the TV restarts.',
+			'appIcon.launcherHint' => 'The new icon appears on your home screen once you leave MaggioFlix.',
+			'appIcon.tvLauncherHint' => 'The new banner appears once you leave MaggioFlix. Android TV can keep showing the old one until the TV restarts.',
 			'appIcon.names.midnight' => 'Midnight',
 			'appIcon.names.ember' => 'Ember',
 			'appIcon.names.paper' => 'Paper',
@@ -8166,7 +8166,7 @@ extension on Translations {
 			'auth.quickConnectWaiting' => 'Waiting for approval…',
 			'auth.quickConnectCancel' => 'Cancel',
 			'auth.quickConnectExpired' => 'Quick Connect expired. Try again.',
-			'auth.localDataRecoveryRequired' => 'Plezy could not safely recover local sign-in and pending playback data. Please sign in again.',
+			'auth.localDataRecoveryRequired' => 'MaggioFlix could not safely recover local sign-in and pending playback data. Please sign in again.',
 			'auth.pinCheckRejected' => 'The Plex PIN check was rejected',
 			'common.cancel' => 'Cancel',
 			'common.save' => 'Save',
@@ -8261,7 +8261,7 @@ extension on Translations {
 			'supporter.customTheme' => 'Custom theme',
 			'supporter.customThemeDescription' => 'Pick every color yourself',
 			'supporter.appIcons' => 'App icons',
-			'supporter.appIconsDescription' => 'Choose an alternate Plezy icon',
+			'supporter.appIconsDescription' => 'Choose an alternate MaggioFlix icon',
 			'supporter.buy' => ({required Object price}) => 'Buy for ${price}',
 			'supporter.loadingPrice' => 'Loading price...',
 			'supporter.restore' => 'Restore Purchases',
@@ -8278,7 +8278,7 @@ extension on Translations {
 			'supporter.errors.restoreFailed' => 'Couldn\'t reach the store to restore your purchase. Try again.',
 			'supporter.errors.nothingToRestore' => 'No Theme & Icon Pack purchase was found for this store account.',
 			'settings.title' => 'Settings',
-			'settings.supportDeveloper' => 'Support Plezy',
+			'settings.supportDeveloper' => 'Support MaggioFlix',
 			'settings.supportDeveloperDescription' => 'Donate via Liberapay to fund development',
 			'settings.language' => 'Language',
 			'settings.theme' => 'Theme',
@@ -8425,7 +8425,7 @@ extension on Translations {
 			'settings.importSettingsDescription' => 'Restore preferences from a file',
 			'settings.importSettingsConfirm' => 'This will replace your current settings. Continue?',
 			'settings.importSettingsSuccess' => 'Settings imported',
-			'settings.importSettingsInvalidFile' => 'This file isn\'t a valid Plezy settings export',
+			'settings.importSettingsInvalidFile' => 'This file isn\'t a valid MaggioFlix settings export',
 			'settings.importSettingsNoUser' => 'Sign in before importing settings',
 			'settings.shortcutsReset' => 'Shortcuts reset to defaults',
 			'settings.resetShortcutsConfirm' => 'This will replace your custom shortcuts with the defaults. Continue?',
@@ -8562,7 +8562,7 @@ extension on Translations {
 			'settings.forceTvMode' => 'Force TV mode',
 			'settings.forceTvModeDescription' => 'Force TV layout. For devices that don\'t auto-detect. Requires restart.',
 			'settings.startInFullscreen' => 'Start in fullscreen',
-			'settings.startInFullscreenDescription' => 'Open Plezy in fullscreen mode at launch',
+			'settings.startInFullscreenDescription' => 'Open MaggioFlix in fullscreen mode at launch',
 			'settings.exitFullscreenOnPlayerClose' => 'Exit fullscreen on player close',
 			'settings.exitFullscreenOnPlayerCloseDescription' => 'Automatically exit fullscreen when closing the video player',
 			'settings.autoHidePerformanceOverlay' => 'Auto-Hide Performance Overlay',
@@ -8612,7 +8612,7 @@ extension on Translations {
 			'settings.playerScopeGlobal' => 'Everywhere',
 			'settings.playerScopeLibrary' => 'Per library',
 			'settings.playerScopeTitle' => 'Per show or movie',
-			'settings.exportDialogTitle' => 'Export Plezy settings',
+			'settings.exportDialogTitle' => 'Export MaggioFlix settings',
 			'themeEditor.builtIn' => 'Built-in',
 			'themeEditor.presets' => 'Presets',
 			'themeEditor.custom' => 'Custom',
@@ -8830,8 +8830,8 @@ extension on Translations {
 			'mediaMenu.deleteEpisodeCountWarning' => ({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(n, one: 'This deletes all ${n} episode in it, and its file.', other: 'This deletes all ${n} episodes in it, and their files.', ), 
 			'mediaMenu.deleteMultiPartWarning' => ({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(n, one: 'This item is stored as ${n} file, which will be deleted.', other: 'This item is stored across ${n} files, and all of them will be deleted.', ), 
 			'mediaMenu.deleteSharedFileHeading' => ({required num n}) => (_root.$meta.cardinalResolver ?? PluralResolvers.cardinal('en'))(n, one: '${n} other episode is stored in the same file and will be deleted too:', other: '${n} other episodes are stored in the same file and will be deleted too:', ), 
-			'mediaMenu.deleteScopeUnverifiedProbeFailed' => 'Plezy could not check which files this will remove, so it may delete more than the item named above. Cancel and try again, or delete anyway.',
-			'mediaMenu.deleteScopeUnverifiedNoFileInfo' => 'Your server did not provide file details for this item, so Plezy cannot check which files this will remove. It may delete more than the item named above.',
+			'mediaMenu.deleteScopeUnverifiedProbeFailed' => 'MaggioFlix could not check which files this will remove, so it may delete more than the item named above. Cancel and try again, or delete anyway.',
+			'mediaMenu.deleteScopeUnverifiedNoFileInfo' => 'Your server did not provide file details for this item, so MaggioFlix cannot check which files this will remove. It may delete more than the item named above.',
 			'mediaMenu.mediaDeletedSuccessfully' => 'Media item deleted successfully',
 			'mediaMenu.mediaFailedToDelete' => 'Failed to delete media item',
 			'mediaMenu.rate' => 'Rate',
@@ -9082,7 +9082,7 @@ extension on Translations {
 			'mpvConfig.removeLine' => 'Remove line',
 			'mpvConfig.embeddedVoHint' => 'vo, gpu-context and gpu-api are ignored on Linux: embedded video always renders through vo=libmpv on the video plane, and gpu-next (which compute shaders like ArtCNN need) cannot run embedded.',
 			'dialog.confirmAction' => 'Confirm Action',
-			'profiles.addPlezyProfile' => 'Add Plezy profile',
+			'profiles.addPlezyProfile' => 'Add MaggioFlix profile',
 			'profiles.switchingProfile' => 'Switching profile…',
 			'profiles.deleteThisProfileTitle' => 'Delete this profile?',
 			'profiles.deleteThisProfileMessage' => ({required Object displayName}) => 'Remove ${displayName}. Connections aren\'t affected.',
@@ -9159,12 +9159,12 @@ extension on Translations {
 			'connections.accessDeniedMany' => ({required Object count}) => '${count} servers refused access for this account',
 			'connections.signInAgain' => 'Sign in again',
 			'connections.editMediaBrowserTitle' => ({required Object product}) => 'Edit ${product} connection',
-			'connections.editMediaBrowserIntro' => ({required Object serverName}) => 'Add or remove URLs for ${serverName}. Plezy will use the reachable URL with the lowest latency.',
+			'connections.editMediaBrowserIntro' => ({required Object serverName}) => 'Add or remove URLs for ${serverName}. MaggioFlix will use the reachable URL with the lowest latency.',
 			'accountPreferences.sectionTitle' => 'Account preferences',
 			'accountPreferences.hubSubtitleSingle' => ({required Object account}) => 'Audio, subtitle and library options saved on ${account}',
 			'accountPreferences.hubSubtitleMultiple' => ({required Object count}) => 'Audio, subtitle and library options saved on ${count} accounts',
 			'accountPreferences.pickAccount' => 'Every account stores its own preferences. Pick the one to edit.',
-			'accountPreferences.storedOnAccount' => 'These options are saved on the account itself, so every app signed in to it uses them — including Plezy on your other devices.',
+			'accountPreferences.storedOnAccount' => 'These options are saved on the account itself, so every app signed in to it uses them — including MaggioFlix on your other devices.',
 			'accountPreferences.noAccounts' => 'No accounts to configure',
 			'accountPreferences.noAccountsHint' => 'Sign in to Plex, or connect a Jellyfin or Emby server, and the preferences stored on that account show up here.',
 			'accountPreferences.unavailable' => 'Can\'t reach this account',
@@ -9398,9 +9398,9 @@ extension on Translations {
 			'logs.clearLogs' => 'Clear Logs',
 			'logs.copyLogs' => 'Copy Logs',
 			'logs.uploadLogs' => 'Upload Logs',
-			'startup.failedTitle' => 'Plezy could not start',
+			'startup.failedTitle' => 'MaggioFlix could not start',
 			'startup.failedBody' => 'Something went wrong during startup. The details below identify what failed.',
-			'startup.failedBodyRepairable' => 'Plezy\'s saved settings file is damaged and has to be rebuilt before Plezy can start. Retrying will not help — choose Repair storage.',
+			'startup.failedBodyRepairable' => 'MaggioFlix\'s saved settings file is damaged and has to be rebuilt before MaggioFlix can start. Retrying will not help — choose Repair storage.',
 			'startup.phaseLabel' => 'Step',
 			'startup.showDetails' => 'Show details',
 			'startup.hideDetails' => 'Hide details',
@@ -9409,16 +9409,16 @@ extension on Translations {
 			'startup.uploadDetails' => 'Upload details',
 			'startup.repairStorage' => 'Repair storage',
 			'startup.repairTitle' => 'Repair stored data?',
-			'startup.repairBodyCommon' => 'Plezy\'s settings file is damaged and cannot be read. Repairing resets every setting to its default.',
+			'startup.repairBodyCommon' => 'MaggioFlix\'s settings file is damaged and cannot be read. Repairing resets every setting to its default.',
 			'startup.repairBodyOneCredential' => 'One saved sign-in is damaged and cannot be read. Repairing removes just that one; your other settings are left alone.',
 			'startup.repairBodySignInsKept' => 'Your servers and profiles should stay signed in.',
 			'startup.repairBodySignInsLost' => 'The key protecting your saved sign-ins cannot be recovered from this file, so you will have to sign in to every server and profile again. Nothing on your media server is affected.',
-			'startup.repairBodySessionsUncertain' => 'Trackers (MAL, AniList, Simkl, Trakt) and Seerr are stored separately and may or may not survive. Plezy will tell you exactly what it kept.',
+			'startup.repairBodySessionsUncertain' => 'Trackers (MAL, AniList, Simkl, Trakt) and Seerr are stored separately and may or may not survive. MaggioFlix will tell you exactly what it kept.',
 			'startup.repairConfirm' => 'Repair',
 			'startup.repairSucceeded' => 'Storage repaired',
 			'startup.repairNeedsRestart' => 'Storage repaired — restart required',
-			'startup.restartRequiredBody' => 'Your data was repaired, but Plezy has to start fresh before it can use it. Close Plezy and open it again.',
-			'startup.quitPlezy' => 'Quit Plezy',
+			'startup.restartRequiredBody' => 'Your data was repaired, but MaggioFlix has to start fresh before it can use it. Close MaggioFlix and open it again.',
+			'startup.quitPlezy' => 'Quit MaggioFlix',
 			'startup.repairFailed' => 'Repair failed',
 			'startup.repairKeptSignIns' => 'Your servers and profiles are still signed in.',
 			'startup.repairLostSignIns' => 'The key protecting your saved sign-ins could not be recovered. You will have to sign in to every server and profile again.',
@@ -9427,7 +9427,7 @@ extension on Translations {
 			'startup.backupWarning' => 'It contains your sign-in credentials. Do not upload or share it.',
 			'startup.deleteBackup' => 'Delete copy',
 			'startup.backupDeleted' => 'Copy deleted.',
-			'startup.previousFailureTitle' => 'Plezy failed to start last time',
+			'startup.previousFailureTitle' => 'MaggioFlix failed to start last time',
 			'licenses.relatedPackages' => 'Related Packages',
 			'licenses.license' => 'License',
 			'licenses.licenseNumber' => ({required Object number}) => 'License ${number}',
@@ -9773,7 +9773,7 @@ extension on Translations {
 			'watchTogether.codeCopied' => 'Room code copied',
 			'watchTogether.shareInvite' => 'Share Invite',
 			'watchTogether.inviteCopied' => 'Invite copied. Paste it into a message.',
-			'watchTogether.inviteMessage' => ({required Object code}) => 'Join my Watch Together room in Plezy: open Watch Together, choose Join Room and enter ${code}.',
+			'watchTogether.inviteMessage' => ({required Object code}) => 'Join my Watch Together room in MaggioFlix: open Watch Together, choose Join Room and enter ${code}.',
 			'watchTogether.openSessionControls' => 'Open Watch Together session controls',
 			'watchTogether.reconnecting' => 'Reconnecting...',
 			'watchTogether.reconnectingDescription' => 'The connection dropped. You rejoin the room automatically.',
@@ -9799,7 +9799,7 @@ extension on Translations {
 			'watchTogether.chooseAnotherCopy' => 'Choose Another Copy',
 			'watchTogether.dontPlay' => 'Don\'t Play',
 			'watchTogether.unavailableTitle' => 'You don\'t have this video',
-			'watchTogether.unavailableDescription' => 'Plezy couldn\'t find it in your libraries. Pick a copy yourself or search again.',
+			'watchTogether.unavailableDescription' => 'MaggioFlix couldn\'t find it in your libraries. Pick a copy yourself or search again.',
 			'watchTogether.chooseCopy' => 'Choose a Copy',
 			'watchTogether.searchAgain' => 'Search Again',
 			'watchTogether.noCandidates' => 'No copies found in your libraries.',
@@ -9891,7 +9891,7 @@ extension on Translations {
 			'watchTogether.errors.relayFull' => 'Watch Together is busy right now. Try again later.',
 			'watchTogether.errors.unreachable' => 'Couldn\'t reach the Watch Together relay. Check your connection.',
 			'watchTogether.errors.rateLimited' => 'Too many attempts. Wait a moment and try again.',
-			'watchTogether.errors.clientBlocked' => 'This version of Plezy can\'t use the relay. Update the app.',
+			'watchTogether.errors.clientBlocked' => 'This version of MaggioFlix can\'t use the relay. Update the app.',
 			'watchTogether.errors.forbidden' => 'Only the host can do that.',
 			'watchTogether.errors.notInRoom' => 'You\'re not in a room.',
 			'watchTogether.errors.alreadyInRoom' => 'You\'re already in a room.',
@@ -9985,14 +9985,14 @@ extension on Translations {
 			'downloads.backgroundWarning.bannerAction' => 'Details',
 			'downloads.backgroundWarning.sheetTitle' => 'Background downloads are blocked',
 			'downloads.backgroundWarning.sheetTitleDegraded' => 'Background downloads may be limited',
-			'downloads.backgroundWarning.sheetIntro' => 'Android is preventing Plezy from downloading reliably in the background.',
-			'downloads.backgroundWarning.sheetIntroDegraded' => 'Your device is limiting when Plezy can download in the background.',
-			'downloads.backgroundWarning.reasonBackgroundRestricted' => 'Plezy\'s background usage is restricted. Set its battery or background usage to "Unrestricted".',
-			'downloads.backgroundWarning.reasonStandbyRestricted' => 'Android has put Plezy in a restricted standby state. Set its battery usage to "Unrestricted".',
+			'downloads.backgroundWarning.sheetIntro' => 'Android is preventing MaggioFlix from downloading reliably in the background.',
+			'downloads.backgroundWarning.sheetIntroDegraded' => 'Your device is limiting when MaggioFlix can download in the background.',
+			'downloads.backgroundWarning.reasonBackgroundRestricted' => 'MaggioFlix\'s background usage is restricted. Set its battery or background usage to "Unrestricted".',
+			'downloads.backgroundWarning.reasonStandbyRestricted' => 'Android has put MaggioFlix in a restricted standby state. Set its battery usage to "Unrestricted".',
 			'downloads.backgroundWarning.reasonDownloadChannelBlocked' => 'Download notifications are turned off, so progress and controls may be unavailable.',
 			'downloads.backgroundWarning.reasonNotificationsDisabled' => 'Notifications are turned off. On Android 13 or newer, they are required for long background downloads.',
 			'downloads.backgroundWarning.reasonDataSaver' => 'Data Saver is on, which blocks background downloads on mobile data. Downloads should still run on Wi-Fi.',
-			'downloads.backgroundWarning.reasonOemUnknown' => 'Downloads repeatedly stopped while Plezy was in the background. Check Plezy\'s battery or background usage settings.',
+			'downloads.backgroundWarning.reasonOemUnknown' => 'Downloads repeatedly stopped while MaggioFlix was in the background. Check MaggioFlix\'s battery or background usage settings.',
 			'downloads.backgroundWarning.openSettings' => 'Open settings',
 			'downloads.backgroundWarning.stillNotWorking' => 'Device-specific help',
 			'downloads.backgroundWarning.stillNotWorkingDescription' => 'See steps for your device, or send a log from Settings › View Logs if the issue continues.',
@@ -10056,19 +10056,19 @@ extension on Translations {
 			'companionRemote.session.stopServer' => 'Stop Server',
 			'companionRemote.session.minimize' => 'Minimize',
 			'companionRemote.session.manualAddressHint' => 'Manual connection address:',
-			'companionRemote.pairing.discoveryDescription' => 'Plezy devices with the same Plex account appear here',
+			'companionRemote.pairing.discoveryDescription' => 'MaggioFlix devices with the same Plex account appear here',
 			'companionRemote.pairing.hostAddressHint' => '192.168.1.100:48632',
 			'companionRemote.pairing.connecting' => 'Connecting...',
 			'companionRemote.pairing.searchingForDevices' => 'Looking for devices...',
 			'companionRemote.pairing.noDevicesFound' => 'No devices found on your network',
-			'companionRemote.pairing.noDevicesHint' => 'Open Plezy on desktop and use the same Wi-Fi',
+			'companionRemote.pairing.noDevicesHint' => 'Open MaggioFlix on desktop and use the same Wi-Fi',
 			'companionRemote.pairing.availableDevices' => 'Available Devices',
 			'companionRemote.pairing.manualConnection' => 'Manual Connection',
 			'companionRemote.pairing.cryptoInitFailed' => 'Couldn\'t start secure connection. Sign in to Plex first.',
 			'companionRemote.pairing.validationHostRequired' => 'Please enter host address',
 			'companionRemote.pairing.validationHostFormat' => 'Format must be IP:port (e.g., 192.168.1.100:48632)',
 			'companionRemote.pairing.connectionTimedOut' => 'Connection timed out. Use the same network on both devices.',
-			'companionRemote.pairing.sessionNotFound' => 'Device not found. Make sure Plezy is running on the host.',
+			'companionRemote.pairing.sessionNotFound' => 'Device not found. Make sure MaggioFlix is running on the host.',
 			'companionRemote.pairing.authFailed' => 'Authentication failed. Both devices need the same Plex account.',
 			'companionRemote.pairing.failedToConnect' => ({required Object error}) => 'Failed to connect: ${error}',
 			'companionRemote.remote.disconnectConfirm' => 'Do you want to disconnect from the remote session?',
@@ -10297,11 +10297,11 @@ extension on Translations {
 			'trakt.connected' => 'Connected',
 			'trakt.connectedAs' => ({required Object username}) => 'Connected as @${username}',
 			'trakt.disconnectConfirm' => 'Disconnect Trakt account?',
-			'trakt.disconnectConfirmBody' => 'Plezy will stop sending events to Trakt. You can reconnect any time.',
+			'trakt.disconnectConfirmBody' => 'MaggioFlix will stop sending events to Trakt. You can reconnect any time.',
 			'trakt.scrobble' => 'Real-time scrobbling',
 			'trakt.scrobbleDescription' => 'Send play, pause, and stop events to Trakt during playback.',
 			'trakt.watchedSync' => 'Sync watched status',
-			'trakt.watchedSyncDescription' => 'When you mark items as watched in Plezy, they are also marked as watched on Trakt.',
+			'trakt.watchedSyncDescription' => 'When you mark items as watched in MaggioFlix, they are also marked as watched on Trakt.',
 			'seerr.title' => 'Seerr',
 			'seerr.connectTitle' => 'Connect Seerr',
 			'seerr.serverUrl' => 'Server URL',
@@ -10311,10 +10311,10 @@ extension on Translations {
 			'seerr.signInWithEmby' => 'Sign in with Emby',
 			'seerr.signInWithLocal' => 'Use a local account',
 			'seerr.email' => 'Email',
-			'seerr.noSignInMethods' => 'This Seerr instance offers no sign-in method Plezy supports.',
+			'seerr.noSignInMethods' => 'This Seerr instance offers no sign-in method MaggioFlix supports.',
 			'seerr.instance' => 'Instance',
 			'seerr.disconnectConfirm' => 'Disconnect Seerr?',
-			'seerr.disconnectConfirmBody' => 'Plezy will forget this Seerr instance. Reconnect any time.',
+			'seerr.disconnectConfirmBody' => 'MaggioFlix will forget this Seerr instance. Reconnect any time.',
 			'seerr.request' => 'Request',
 			'seerr.request4k' => 'Request in 4K',
 			'seerr.seasons' => 'Seasons',
@@ -10339,7 +10339,7 @@ extension on Translations {
 			'seerr.statusBlocklisted' => 'Blocklisted',
 			'seerr.couldNotReach' => ({required Object url, required Object error}) => 'Could not reach ${url}: ${error}',
 			'seerr.noInstanceAtUrl' => ({required Object url, required Object status}) => 'No Seerr instance at ${url} (HTTP ${status})',
-			'seerr.behindAuthProxy' => 'An authenticating reverse proxy (SSO or HTTP auth) answered instead of Seerr. Plezy cannot sign in through it: let Seerr\'s /api/v1 path bypass the proxy for this app, or use an address that reaches Seerr directly.',
+			'seerr.behindAuthProxy' => 'An authenticating reverse proxy (SSO or HTTP auth) answered instead of Seerr. MaggioFlix cannot sign in through it: let Seerr\'s /api/v1 path bypass the proxy for this app, or use an address that reaches Seerr directly.',
 			'seerr.invalidUrl' => 'Enter a server address like https://seerr.example.com',
 			'seerr.quickConnectUnsupported' => 'This Seerr instance does not support Quick Connect. It needs Seerr 3.4 or newer.',
 			'seerr.notInitialized' => 'This Seerr instance has not completed first-run setup',
@@ -10360,7 +10360,7 @@ extension on Translations {
 			'services.scrobble' => 'Track progress automatically',
 			'services.scrobbleDescription' => 'Update your list when you finish an episode or movie.',
 			'services.disconnectConfirm' => ({required Object service}) => 'Disconnect ${service}?',
-			'services.disconnectConfirmBody' => ({required Object service}) => 'Plezy will stop updating ${service}. Reconnect any time.',
+			'services.disconnectConfirmBody' => ({required Object service}) => 'MaggioFlix will stop updating ${service}. Reconnect any time.',
 			'services.connectFailed' => ({required Object service}) => 'Couldn\'t connect to ${service}. Try again.',
 			'services.names.mal' => 'MyAnimeList',
 			'services.names.anilist' => 'AniList',
@@ -10368,8 +10368,8 @@ extension on Translations {
 			'services.names.seerr' => 'Seerr',
 			'services.names.mdblist' => 'MDBList',
 			'services.simklReconnect.title' => 'Reconnect Simkl',
-			'services.simklReconnect.subtitle' => 'Simkl is retiring the sign-in method this connection uses. Reconnecting opens simkl.com to approve Plezy — Plezy never sees your password. Your watch history stays on Simkl.',
-			'services.deviceCode.title' => ({required Object service}) => 'Activate Plezy on ${service}',
+			'services.simklReconnect.subtitle' => 'Simkl is retiring the sign-in method this connection uses. Reconnecting opens simkl.com to approve MaggioFlix — MaggioFlix never sees your password. Your watch history stays on Simkl.',
+			'services.deviceCode.title' => ({required Object service}) => 'Activate MaggioFlix on ${service}',
 			'services.deviceCode.instructions' => 'Scan the QR code, or visit the address below and enter this code:',
 			'services.deviceCode.openToActivate' => ({required Object service}) => 'Open ${service} to activate',
 			'services.deviceCode.copyCode' => 'Copy activation code',
@@ -10439,7 +10439,7 @@ extension on Translations {
 			'addServer.redirectDifferentHost' => ({required Object product}) => 'The server redirected to a different host. Enter the final ${product} URL directly.',
 			'addServer.redirectInsecure' => 'The server redirected from HTTPS to an insecure URL',
 			'addServer.redirectUnsupportedEnterFinal' => ({required Object product}) => 'The server redirected to an unsupported URL. Enter the final ${product} URL directly.',
-			'deepLinks.invalid' => 'This Plezy link isn\'t valid.',
+			'deepLinks.invalid' => 'This MaggioFlix link isn\'t valid.',
 			'deepLinks.profileNotFound' => ({required Object profile}) => 'No profile matches "${profile}".',
 			'deepLinks.serverUnavailable' => 'Couldn\'t reach the server for this link.',
 			'deepLinks.notFound' => 'Couldn\'t find this title in your libraries.',

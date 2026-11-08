@@ -1,3 +1,5 @@
+> **MaggioFlix** è un fork personale di [Plezy](https://github.com/edde746/plezy) (GPL-3.0) per Android TV, con nome, icone e indirizzi del server MaggioFlix. Non è prodotto né approvato dal progetto Plezy. Le modifiche del fork sono raccolte in `lib/maggioflix_config.dart`, nelle risorse Android e in `.github/workflows/maggioflix-android.yml`; l'APK aggiornato è nelle [release](../../releases/latest).
+
 <h1>
   <img src="assets/plezy.png" alt="Plezy Logo" height="24" style="vertical-align: middle;" />
   Plezy

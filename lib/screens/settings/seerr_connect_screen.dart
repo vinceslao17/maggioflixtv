@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:provider/provider.dart';
 
+import '../../maggioflix_config.dart';
 import '../../focus/focusable_button.dart';
 import '../../focus/focusable_text_field.dart';
 import '../../i18n/strings.g.dart';
@@ -42,7 +43,7 @@ class SeerrConnectScreen extends StatefulWidget {
 
 class _SeerrConnectScreenState extends State<SeerrConnectScreen>
     with AsyncFormStateMixin, QuickConnectFlowMixin, ControllerDisposerMixin {
-  late final _urlController = createTextEditingController();
+  late final _urlController = createTextEditingController(text: maggioflixSeerrUrl);
   late final _identifierController = createTextEditingController();
   late final _passwordController = createTextEditingController();
   final _urlFocus = FocusNode(debugLabel: 'SeerrConnect:Url');

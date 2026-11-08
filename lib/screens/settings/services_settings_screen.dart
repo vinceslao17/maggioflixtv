@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../i18n/strings.g.dart';
 import '../../models/catalog/catalog_item.dart';
+import '../../maggioflix_config.dart';
 import '../../providers/seerr_account_provider.dart';
 import '../../services/discord_rpc_service.dart';
 import '../../services/settings_service.dart';
@@ -39,7 +40,12 @@ class ServicesSettingsScreen extends StatelessWidget {
                 ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
-            SettingsGroup(children: [for (final info in TrackerServiceInfo.all) _TrackerHubRow(info), _seerr()]),
+            SettingsGroup(
+              children: [
+                if (maggioflixUsesPlezyServices) for (final info in TrackerServiceInfo.all) _TrackerHubRow(info),
+                _seerr(),
+              ],
+            ),
             if (DiscordRPCService.isAvailable)
               SettingsGroup(
                 title: t.services.integrations,
