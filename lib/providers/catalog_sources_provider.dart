@@ -37,6 +37,7 @@ import 'seerr_account_provider.dart';
 import 'trackers_provider.dart';
 import '../utils/platform_detector.dart';
 import '../utils/app_logger.dart';
+import '../maggioflix_config.dart';
 
 typedef PlexDiscoverSessionSupplier = Future<PlexDiscoverSession?> Function();
 
@@ -150,6 +151,14 @@ class CatalogSourcesProvider extends ChangeNotifier with DisposableChangeNotifie
 
   bool get hasAnySource => connectedSources.isNotEmpty;
 
+  /// MaggioFlix: le fonti della pagina Request. Con Seerr collegato resta solo
+  /// Seerr; le altre continuano a servire watchlist e valutazioni.
+  List<CatalogSource> get exploreSources {
+    final seerr = _seerr.source;
+    if (maggioflixRequestPageSeerrOnly && seerr != null) return [seerr];
+    return connectedSources;
+  }
+
   /// The connected Seerr source, for the request surfaces (detail-screen
   /// Request action and sheet) that need Seerr's client beyond the
   /// [CatalogSource] interface.
@@ -158,7 +167,7 @@ class CatalogSourcesProvider extends ChangeNotifier with DisposableChangeNotifie
   /// The source whose rows the Explore tab shows: the user's persisted pick
   /// when it is still connected, otherwise the first connected source.
   CatalogSource? get activeSource {
-    final sources = connectedSources;
+    final sources = exploreSources;
     return sources.firstWhereOrNull((s) => s.id == _preferredSourceId) ?? sources.firstOrNull;
   }
 

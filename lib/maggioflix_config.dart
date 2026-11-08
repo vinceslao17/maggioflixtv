@@ -24,3 +24,7 @@ const bool maggioflixShowLiveTvTab = false;
 /// Richieste Seerr semplificate: si sceglie solo normale o 4K, senza server,
 /// profilo qualità, cartella, lingua o tag (Seerr usa i suoi predefiniti).
 const bool maggioflixAllowAdvancedRequests = false;
+
+/// Pagina Request: con Seerr collegato mostra solo Seerr, senza il menu per
+/// scegliere la fonte (Plex Discover resta per watchlist e valutazioni).
+const bool maggioflixRequestPageSeerrOnly = true;

@@ -198,6 +198,19 @@ class SeerrClient {
 
   Future<SeerrDetails> getTv(int tmdbId) => _details('/tv/$tmdbId');
 
+  // MaggioFlix: valutazioni esterne che Seerr recupera per un titolo.
+  // /movie/{id}/ratingscombined -> {rt: {...}, imdb: {...}};
+  // /movie/{id}/ratings e /tv/{id}/ratings -> solo Rotten Tomatoes.
+  Future<Map<String, dynamic>?> getMovieRatingsCombined(int tmdbId) async =>
+      _asJsonMap(await _request('GET', '/movie/$tmdbId/ratingscombined'));
+
+  Future<Map<String, dynamic>?> getMovieRatings(int tmdbId) async =>
+      _asJsonMap(await _request('GET', '/movie/$tmdbId/ratings'));
+
+  Future<Map<String, dynamic>?> getTvRatings(int tmdbId) async => _asJsonMap(await _request('GET', '/tv/$tmdbId/ratings'));
+
+  static Map<String, dynamic>? _asJsonMap(Object? data) => data is Map<String, dynamic> ? data : null;
+
   Future<SeerrDetails> _details(String path) async {
     final data = await _request('GET', path, query: {'language': _language});
     return SeerrDetails.fromJson(data as Map<String, dynamic>);

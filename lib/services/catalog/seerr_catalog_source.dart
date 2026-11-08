@@ -15,6 +15,9 @@ import '../../utils/trailer_urls.dart';
 import '../seerr/seerr_client.dart';
 import '../seerr/seerr_constants.dart';
 import 'catalog_source.dart';
+import '../../media/media_rating.dart';
+import '../../utils/json_utils.dart';
+import '../seerr/seerr_exceptions.dart';
 
 /// [CatalogSource] backed by a Seerr instance's TMDB-based discover API.
 ///
@@ -22,7 +25,7 @@ import 'catalog_source.dart';
 /// here — never disposed by this class). Seerr has no watchlist; its
 /// contribution besides discovery rows is the request flow, which the
 /// request surfaces reach through [client] directly.
-class SeerrCatalogSource implements CatalogSource {
+class SeerrCatalogSource implements CatalogSource, CatalogCommunityRatings {
   final SeerrClient client;
   final WatchlistChangeNotifier _watchlistChanges = WatchlistChangeNotifier();
 
@@ -559,5 +562,46 @@ class SeerrCatalogSource implements CatalogSource {
   @override
   void dispose() {
     _watchlistChanges.dispose();
+  }
+
+  /// MaggioFlix: Rotten Tomatoes (critica e pubblico) e IMDb dal Seerr
+  /// collegato, mostrati nella scheda del titolo accanto agli altri punteggi.
+  @override
+  Future<List<MediaRatingSource>> fetchCommunityRatings(MediaKind kind, CatalogItemIds ids) async {
+    final tmdb = ids.tmdb;
+    if (tmdb == null || (kind != MediaKind.movie && kind != MediaKind.show)) return const [];
+    Map<String, dynamic>? rt;
+    Map<String, dynamic>? imdb;
+    if (kind == MediaKind.movie) {
+      final combined = await _ratingsOrNull(() => client.getMovieRatingsCombined(tmdb));
+      if (combined != null) {
+        rt = combined['rt'] is Map<String, dynamic> ? combined['rt'] as Map<String, dynamic> : null;
+        imdb = combined['imdb'] is Map<String, dynamic> ? combined['imdb'] as Map<String, dynamic> : null;
+      } else {
+        rt = await _ratingsOrNull(() => client.getMovieRatings(tmdb));
+      }
+    } else {
+      rt = await _ratingsOrNull(() => client.getTvRatings(tmdb));
+    }
+    return [
+      ?MediaRatingSource.fromScale('rottenTomatoesCritic', flexibleDouble(rt?['criticsScore']), scale: 100),
+      ?MediaRatingSource.fromScale('rottenTomatoesAudience', flexibleDouble(rt?['audienceScore']), scale: 100),
+      ?MediaRatingSource.fromScale(
+        'imdb',
+        flexibleDouble(imdb?['criticsScore']),
+        scale: 10,
+        votes: flexibleInt(imdb?['criticsScoreCount']),
+      ),
+    ];
+  }
+
+  /// Seerr risponde 404 quando non ha valutazioni per il titolo.
+  static Future<Map<String, dynamic>?> _ratingsOrNull(Future<Map<String, dynamic>?> Function() load) async {
+    try {
+      return await load();
+    } on SeerrApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
   }
 }

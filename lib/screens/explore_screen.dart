@@ -213,7 +213,7 @@ class ExploreScreenState extends State<ExploreScreen>
   };
 
   List<AppMenuEntry<CatalogSourceId>> _sourceMenuEntries(CatalogSourcesProvider sources, CatalogSource active) => [
-    for (final source in sources.connectedSources)
+    for (final source in sources.exploreSources)
       AppMenuItem<CatalogSourceId>(
         value: source.id,
         leading: CatalogSourceLogo(source.id),
@@ -269,7 +269,7 @@ class ExploreScreenState extends State<ExploreScreen>
   Widget _buildTitle(CatalogSourcesProvider sources) {
     final active = sources.activeSource;
     if (active == null) return Text(t.explore.title);
-    if (sources.connectedSources.length < 2) {
+    if (sources.exploreSources.length < 2) {
       return Text(active.displayName);
     }
     return _buildSourceSwitcher(sources, active);
@@ -462,7 +462,7 @@ class ExploreScreenState extends State<ExploreScreen>
             onBack: _navigateToSidebar,
             spacing: 4,
             actions: [
-              if (active != null && sources.connectedSources.length > 1)
+              if (active != null && sources.exploreSources.length > 1)
                 FocusableAction(
                   debugLabel: 'ExploreSourceSwitcher',
                   onPressed: () => _sourceMenuKey.currentState?.showButtonMenu(focusFirstItem: true),
