@@ -1027,12 +1027,14 @@ class SettingsService extends BaseSharedPreferencesService {
   static const continueWatchingAction = EnumPref<ContinueWatchingAction>(
     'continue_watching_action',
     values: ContinueWatchingAction.values,
-    defaultValue: ContinueWatchingAction.play,
+    // MaggioFlix: il tocco apre la scheda del contenuto, non il player.
+    defaultValue: ContinueWatchingAction.details,
   );
   static const episodeAction = EnumPref<EpisodeAction>(
     'episode_action',
     values: EpisodeAction.values,
-    defaultValue: EpisodeAction.play,
+    // MaggioFlix: il tocco apre la scheda dell'episodio, non il player.
+    defaultValue: EpisodeAction.details,
   );
   static const mpvConfigText = _MpvConfigTextPref();
 

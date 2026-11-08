@@ -327,7 +327,7 @@ class ExploreScreenState extends State<ExploreScreen>
         controller: searchController,
         focusNode: searchFocusNode,
         debugLabel: searchDebugLabel,
-        hintText: t.explore.searchHint(source: sources.activeSource?.displayName ?? ''),
+        hintText: t.common.search,
         onNavigateLeft: _navigateToSidebar,
         onNavigateDown: _searchFieldDownTarget(),
         onEditingComplete: handleSearchSubmit,

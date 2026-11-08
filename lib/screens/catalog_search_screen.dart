@@ -47,16 +47,15 @@ class _CatalogSearchScreenState extends State<CatalogSearchScreen>
 
   @override
   Widget build(BuildContext context) {
-    final sourceName = widget.source.displayName;
     return FocusedScrollScaffold(
-      title: Text(t.explore.searchHint(source: sourceName)),
+      title: Text(t.common.search),
       slivers: [
         SliverToBoxAdapter(
           child: SearchInputField(
             controller: searchController,
             focusNode: searchFocusNode,
             debugLabel: searchDebugLabel,
-            hintText: t.explore.searchHint(source: sourceName),
+            hintText: t.common.search,
             onNavigateDown: searchResults.isNotEmpty && !isSearching ? firstResultFocusNode.requestFocus : null,
             onEditingComplete: PlatformDetector.isTV() ? handleSearchSubmit : null,
           ),
@@ -66,7 +65,7 @@ class _CatalogSearchScreenState extends State<CatalogSearchScreen>
         else if (!hasSearched)
           SliverFillRemaining(
             child: StateMessageWidget(
-              message: t.explore.searchPrompt(source: sourceName),
+              message: t.explore.searchPrompt(source: 'MaggioFlix'),
               icon: Symbols.search_rounded,
               iconSize: 80,
             ),

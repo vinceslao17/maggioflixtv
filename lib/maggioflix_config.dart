@@ -28,3 +28,7 @@ const bool maggioflixAllowAdvancedRequests = false;
 /// Pagina Request: con Seerr collegato mostra solo Seerr, senza il menu per
 /// scegliere la fonte (Plex Discover resta per watchlist e valutazioni).
 const bool maggioflixRequestPageSeerrOnly = true;
+
+/// Scheda titolo: le valutazioni (Rotten Tomatoes, IMDb...) stanno in alto al
+/// posto del punteggio con la stella, invece che in una sezione più in basso.
+const bool maggioflixRatingsAtTop = true;

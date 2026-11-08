@@ -60,6 +60,7 @@ import '../widgets/overlay_sheet.dart';
 import '../widgets/seerr_request_sheet.dart';
 import '../widgets/settings_section.dart';
 import '../widgets/stat_chip.dart';
+import '../maggioflix_config.dart';
 
 /// Detail screen for a catalog item (Explore tab). Renders from provider
 /// data — no media server required — and resolves library availability in
@@ -831,7 +832,10 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
       }
     }
 
-    if (item.rating case final rating?) {
+    final topRatings = maggioflixRatingsAtTop ? _ratingChips(Theme.of(context)) : const <Widget>[];
+    if (topRatings.isNotEmpty) {
+      chips.addAll(topRatings);
+    } else if (item.rating case final rating?) {
       var score = rating.toStringAsFixed(1);
       if (item.votes case final votes?) {
         score = '$score (${t.explore.stats.votes(n: compact.format(votes))})';
@@ -903,6 +907,21 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
   /// trackers' scores merged in as they arrive. Sources without a mark
   /// (`critic`, `audience`) keep their written label.
   Widget? _buildRatingsSection(ThemeData theme) {
+    // MaggioFlix: le valutazioni stanno in alto, al posto del punteggio con la stella.
+    if (maggioflixRatingsAtTop) return null;
+    final chips = _ratingChips(theme);
+    if (chips.isEmpty) return null;
+    return Column(
+      crossAxisAlignment: .start,
+      children: [
+        Text(t.explore.detail.ratings, style: theme.textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: chips),
+      ],
+    );
+  }
+
+  List<Widget> _ratingChips(ThemeData theme) {
     final compact = NumberFormat.compact(locale: LocaleSettings.currentLocale.intlLocaleName);
     final chips = <Widget>[];
     for (final rating in withCommunityRatings(_item.ratings ?? const [], _communityRatings)) {
@@ -928,15 +947,7 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
               ),
       );
     }
-    if (chips.isEmpty) return null;
-    return Column(
-      crossAxisAlignment: .start,
-      children: [
-        Text(t.explore.detail.ratings, style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Wrap(spacing: 8, runSpacing: 8, children: chips),
-      ],
-    );
+    return chips;
   }
 
   Widget? _buildScheduleSection(ThemeData theme) {
