@@ -10,6 +10,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:provider/provider.dart';
 
 import '../focus/input_mode_tracker.dart';
+import '../i18n/app_locale_utils.dart';
 import '../i18n/strings.g.dart';
 import '../media/media_kind.dart';
 import '../models/catalog/catalog_item.dart';
