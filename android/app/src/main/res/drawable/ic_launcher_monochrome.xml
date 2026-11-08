@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- MaggioFlix -->
+<!-- MaggioFlix: bobina del logo, per icone a tema -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:height="108dp"
     android:width="108dp"
@@ -7,5 +7,6 @@
     android:viewportWidth="108">
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M30,74 L30,34 L40,34 L54,52 L68,34 L78,34 L78,74 L69,74 L69,49 L54,68 L39,49 L39,74 Z" />
+        android:fillType="evenOdd"
+        android:pathData="M28.00,54.00a26.00,26.00 0 1,0 52.00,0a26.00,26.00 0 1,0 -52.00,0ZM50.00,54.00a4.00,4.00 0 1,0 8.00,0a4.00,4.00 0 1,0 -8.00,0ZM47.80,39.50a6.20,6.20 0 1,0 12.40,0a6.20,6.20 0 1,0 -12.40,0ZM61.59,49.52a6.20,6.20 0 1,0 12.40,0a6.20,6.20 0 1,0 -12.40,0ZM56.32,65.73a6.20,6.20 0 1,0 12.40,0a6.20,6.20 0 1,0 -12.40,0ZM39.28,65.73a6.20,6.20 0 1,0 12.40,0a6.20,6.20 0 1,0 -12.40,0ZM34.01,49.52a6.20,6.20 0 1,0 12.40,0a6.20,6.20 0 1,0 -12.40,0Z" />
 </vector>
