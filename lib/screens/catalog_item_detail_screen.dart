@@ -61,6 +61,7 @@ import '../widgets/seerr_request_sheet.dart';
 import '../widgets/settings_section.dart';
 import '../widgets/stat_chip.dart';
 import '../maggioflix_config.dart';
+import '../maggioflix/requests.dart';
 
 /// Detail screen for a catalog item (Explore tab). Renders from provider
 /// data — no media server required — and resolves library availability in
@@ -1395,6 +1396,14 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
     final theme = Theme.of(context);
     final onWatchlist = _isOnWatchlist;
     final tmdbId = item.ids.tmdb;
+    // MaggioFlix: titolo già disponibile o già richiesto -> scritta al posto del pulsante.
+    final mfAvailable = item.serverState?.availability == CatalogAvailability.available;
+    final mfRequested =
+        !mfAvailable &&
+        switch (item.serverState?.request) {
+          CatalogRequestState.pending || CatalogRequestState.approved || CatalogRequestState.processing => true,
+          _ => false,
+        };
     // Subscriptions for [_requestSource]: the source itself (disconnect) and
     // the permission mask (grant/revoke), both adopted in place upstream.
     context.select<CatalogSourcesProvider, SeerrCatalogSource?>((sources) => sources.seerrSource);
@@ -1532,7 +1541,44 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
                                                       : t.explore.addToWatchlist,
                                                   onPressed: () => unawaited(_toggleWatchlist()),
                                                 ),
-                                              if (_requestSource case final SeerrCatalogSource seerr
+                                              if (_requestSource != null && tmdbId != null && (mfAvailable || mfRequested))
+                                                FocusableAction(
+                                                  debugLabel: 'catalog_request_state',
+                                                  builder: (context, state) => Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                                    decoration: BoxDecoration(
+                                                      borderRadius: BorderRadius.circular(24),
+                                                      border: Border.all(
+                                                        color: (mfAvailable ? Colors.green : Colors.lightBlueAccent)
+                                                            .withValues(alpha: 0.7),
+                                                      ),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        AppIcon(
+                                                          mfAvailable
+                                                              ? Symbols.check_circle_rounded
+                                                              : Symbols.schedule_rounded,
+                                                          fill: 1,
+                                                          size: 20,
+                                                          color: mfAvailable ? Colors.green : Colors.lightBlueAccent,
+                                                        ),
+                                                        const SizedBox(width: 8),
+                                                        Text(
+                                                          mfAvailable
+                                                              ? maggioflixAvailableLabel()
+                                                              : maggioflixRequestedLabel(),
+                                                          style: theme.textTheme.titleSmall?.copyWith(
+                                                            color: mfAvailable ? Colors.green : Colors.lightBlueAccent,
+                                                            fontWeight: FontWeight.w600,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                )
+                                              else if (_requestSource case final SeerrCatalogSource seerr
                                                   when tmdbId != null)
                                                 FocusableAction(
                                                   debugLabel: 'catalog_request',

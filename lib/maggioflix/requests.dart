@@ -178,6 +178,11 @@ Future<MfQuota?> _loadQuota(SeerrCatalogSource source) async {
   return json == null ? null : MfQuota.fromJson(json);
 }
 
+/// Etichette del sottomenu Request e dello stato nella scheda titolo.
+String maggioflixBrowseLabel() => _tr('Sfoglia', 'Browse');
+String maggioflixAvailableLabel() => _tr('Disponibile', 'Available');
+String maggioflixRequestedLabel() => _tr('Richiesto', 'Requested');
+
 /// Etichetta del pulsante che apre "Le mie richieste".
 String maggioflixMyRequestsLabel() => _tr('Le mie richieste', 'My requests');
 

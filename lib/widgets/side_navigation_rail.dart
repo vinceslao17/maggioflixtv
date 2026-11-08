@@ -34,6 +34,8 @@ import '../theme/mono_tokens.dart';
 import '../widgets/backend_badge.dart';
 import '../i18n/strings.g.dart';
 import '../maggioflix_config.dart';
+import '../maggioflix/requests.dart';
+import '../screens/catalog_search_screen.dart';
 
 enum _LibraryNavSection { visible, hidden }
 
@@ -478,6 +480,11 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
   static const _kFullscreen = 'fullscreen';
   static const _kHiddenLibraries = 'hiddenLibraries';
   static const _kServerHeaderPrefix = 'serverHeader';
+  // MaggioFlix: sottomenu Request (Sfoglia, Cerca, Le mie richieste).
+  static const _kRequestBrowse = 'requestBrowse';
+  static const _kRequestSearch = 'requestSearch';
+  static const _kMyRequests = 'myRequests';
+  bool _requestExpanded = false;
   static const _kLibraryItemPrefix = 'library';
 
   bool _hiddenLibrariesExpanded = false;
@@ -683,7 +690,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
       _kHome,
       if (hasNowPlaying) _kNowPlaying,
       _kLibraries,
-      if (hasExplore) _kExplore,
+      if (hasExplore) ...[_kExplore, _kRequestBrowse, _kRequestSearch, _kMyRequests],
       _kSearch,
       if (_showDownloads) _kDownloads,
       _kSettings,
@@ -765,6 +772,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
       if (widget.isOfflineMode && widget.onReconnect != null) _kReconnect,
       if (!widget.isOfflineMode) ...[
         _kHome,
+        _kSearch,
         if (hasNowPlaying) _kNowPlaying,
         _kLibraries,
         // Library rows render inside ExcludeFocus(excluding: !_librariesExpanded
@@ -778,8 +786,10 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
           ],
         ],
         if (hasLiveTv) 'liveTv',
-        if (hasExplore) _kExplore,
-        _kSearch,
+        if (hasExplore) ...[
+          _kExplore,
+          if (_requestExpanded && !isCollapsed) ...[_kRequestBrowse, _kRequestSearch, _kMyRequests],
+        ],
       ],
       if (_showDownloads) _kDownloads,
       _kSettings,
@@ -1029,6 +1039,16 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
                                         isCollapsed: isCollapsed,
                                       ),
                                       const SizedBox(height: _itemGap),
+                                      _buildNavItem(
+                                        icon: Symbols.search_rounded,
+                                        selectedIcon: Symbols.search_rounded,
+                                        label: Translations.of(context).common.search,
+                                        isSelected: widget.selectedTab == NavigationTabId.search,
+                                        onTap: () => widget.onDestinationSelected(NavigationTabId.search),
+                                        focusNode: _focusTracker.get(_kSearch),
+                                        isCollapsed: isCollapsed,
+                                      ),
+                                      const SizedBox(height: _itemGap),
                                       // Now Playing — only while a music session is live.
                                       if (nowPlayingTrack != null && musicService != null) ...[
                                         _buildNowPlayingItem(nowPlayingTrack, musicService, isCollapsed: isCollapsed),
@@ -1055,27 +1075,9 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
                                         const SizedBox(height: _itemGap),
                                       ],
                                       if (hasExplore) ...[
-                                        _buildNavItem(
-                                          icon: Symbols.library_add_rounded,
-                                          selectedIcon: Symbols.library_add_rounded,
-                                          label: Translations.of(context).navigation.explore,
-                                          isSelected: widget.selectedTab == NavigationTabId.explore,
-                                          onTap: () => widget.onDestinationSelected(NavigationTabId.explore),
-                                          focusNode: _focusTracker.get(_kExplore),
-                                          isCollapsed: isCollapsed,
-                                        ),
+                                        _buildRequestSection(isCollapsed: isCollapsed),
                                         const SizedBox(height: _itemGap),
                                       ],
-                                      _buildNavItem(
-                                        icon: Symbols.search_rounded,
-                                        selectedIcon: Symbols.search_rounded,
-                                        label: Translations.of(context).common.search,
-                                        isSelected: widget.selectedTab == NavigationTabId.search,
-                                        onTap: () => widget.onDestinationSelected(NavigationTabId.search),
-                                        focusNode: _focusTracker.get(_kSearch),
-                                        isCollapsed: isCollapsed,
-                                      ),
-                                      const SizedBox(height: _itemGap),
                                     ],
                                     // Downloads (hidden on Apple TV — no user
                                     // file storage)
@@ -1122,6 +1124,128 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
           ),
         );
       },
+    );
+  }
+
+  /// MaggioFlix: Request come sottomenu con freccia, come le librerie dei
+  /// server: si apre su Sfoglia, Cerca e Le mie richieste.
+  Widget _buildRequestSection({required bool isCollapsed}) {
+    final t = tokens(context);
+    final isRequestTab = widget.selectedTab == NavigationTabId.explore;
+    final label = Translations.of(context).navigation.explore;
+
+    Widget buildChevron(double opacity) {
+      return AppIcon(
+        _requestExpanded ? Symbols.expand_less_rounded : Symbols.expand_more_rounded,
+        fill: 1,
+        size: 18,
+        color: t.textMuted.withValues(alpha: t.textMuted.a * opacity),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: .start,
+      children: [
+        NavigationRailItem(
+          icon: Symbols.library_add_rounded,
+          label: Text(
+            label,
+            style: TextStyle(fontSize: 14, fontWeight: isRequestTab ? FontWeight.w600 : FontWeight.w400),
+            overflow: .ellipsis,
+            maxLines: 1,
+          ),
+          labelColor: isRequestTab ? t.text : t.textMuted,
+          collapsedLabel: label,
+          trailing: buildChevron(1),
+          trailingBuilder: buildChevron,
+          isSelected: isRequestTab,
+          isCollapsed: isCollapsed,
+          onTap: () => setState(() => _requestExpanded = !_requestExpanded),
+          focusNode: _focusTracker.get(_kExplore),
+          suppressSelectedBackground: widget.isSidebarFocused,
+          focusAlpha: 0.08,
+          selectedFocusAlpha: 0.1,
+          onNavigateRight: widget.onNavigateToContent,
+        ),
+        TweenAnimationBuilder<double>(
+          tween: Tween(end: (_requestExpanded && !isCollapsed) ? 1.0 : 0.0),
+          duration: expandDuration,
+          curve: expandCurve,
+          builder: (context, value, child) {
+            return ClipRect(
+              child: Align(alignment: .topCenter, heightFactor: value, child: child),
+            );
+          },
+          child: ExcludeFocus(
+            excluding: !_requestExpanded || isCollapsed,
+            child: Column(
+              mainAxisSize: .min,
+              crossAxisAlignment: .start,
+              children: [
+                const SizedBox(height: 4),
+                _buildRequestChild(
+                  focusKey: _kRequestBrowse,
+                  icon: Symbols.explore_rounded,
+                  label: maggioflixBrowseLabel(),
+                  isSelected: isRequestTab,
+                  onTap: () => widget.onDestinationSelected(NavigationTabId.explore),
+                ),
+                _buildRequestChild(
+                  focusKey: _kRequestSearch,
+                  icon: Symbols.search_rounded,
+                  label: Translations.of(context).common.search,
+                  onTap: _openRequestSearch,
+                ),
+                _buildRequestChild(
+                  focusKey: _kMyRequests,
+                  icon: Symbols.list_alt_rounded,
+                  label: maggioflixMyRequestsLabel(),
+                  onTap: () => openMaggioflixRequests(context),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRequestChild({
+    required String focusKey,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool isSelected = false,
+  }) {
+    final t = tokens(context);
+    return NavigationRailItem(
+      icon: icon,
+      selectedIcon: icon,
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+          color: isSelected ? t.text : t.textMuted,
+        ),
+        overflow: .ellipsis,
+      ),
+      isSelected: isSelected,
+      onTap: onTap,
+      focusNode: _focusTracker.get(focusKey),
+      iconSize: 18,
+      expandedHeight: 40,
+      suppressSelectedBackground: widget.isSidebarFocused,
+      onNavigateRight: widget.onNavigateToContent,
+    );
+  }
+
+  void _openRequestSearch() {
+    final sources = context.read<CatalogSourcesProvider?>();
+    final source = sources?.seerrSource ?? sources?.activeSource;
+    if (source == null) return;
+    unawaited(
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CatalogSearchScreen(source: source))),
     );
   }
 

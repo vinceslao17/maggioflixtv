@@ -479,13 +479,6 @@ class ExploreScreenState extends State<ExploreScreen>
             onBack: _navigateToSidebar,
             spacing: 4,
             actions: [
-              if (sources.seerrSource != null)
-                FocusableAction(
-                  icon: Symbols.list_alt_rounded,
-                  iconColor: foregroundColor,
-                  tooltip: maggioflixMyRequestsLabel(),
-                  onPressed: () => openMaggioflixRequests(context),
-                ),
               if (active != null && sources.exploreSources.length > 1)
                 FocusableAction(
                   debugLabel: 'ExploreSourceSwitcher',
