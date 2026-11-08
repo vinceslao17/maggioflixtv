@@ -564,6 +564,18 @@ class SeerrCatalogSource implements CatalogSource, CatalogCommunityRatings {
     _watchlistChanges.dispose();
   }
 
+  /// MaggioFlix: titolo e locandina di un contenuto richiesto, per l'elenco
+  /// "Le mie richieste". Null quando Seerr non lo trova.
+  Future<({CatalogItem item, String? thumbUrl})?> maggioflixRequestedItem(MediaKind kind, int tmdbId) async {
+    final details = await _fetchDetails(kind, tmdbId);
+    if (details == null) return null;
+    final origin = await _tmdbImageOrigin();
+    return (
+      item: _toDetailCatalogItem(details, kind, origin),
+      thumbUrl: _tmdbImageUrl(_tmdbImageCdn, details.posterPath, 'w185'),
+    );
+  }
+
   /// MaggioFlix: Rotten Tomatoes (critica e pubblico) e IMDb dal Seerr
   /// collegato, mostrati nella scheda del titolo accanto agli altri punteggi.
   @override

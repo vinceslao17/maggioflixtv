@@ -37,6 +37,7 @@ import '../widgets/tv_browse_rail.dart';
 import '../widgets/tv_spotlight_scaffold.dart';
 import 'catalog_search_screen.dart';
 import 'libraries/state_messages.dart';
+import '../maggioflix/requests.dart';
 
 /// The Explore tab: watchlist + discover rows from the active external
 /// catalog source (Trakt). Only mounted when a source is connected (the tab
@@ -314,6 +315,12 @@ class ExploreScreenState extends State<ExploreScreen>
           key: _actionBarKey,
           onNavigateDown: searchFocusNode.requestFocus,
           actions: [
+            if (sources.seerrSource != null)
+              FocusableAction(
+                icon: Symbols.list_alt_rounded,
+                tooltip: maggioflixMyRequestsLabel(),
+                onPressed: () => openMaggioflixRequests(context),
+              ),
             FocusableAction(icon: Symbols.refresh_rounded, tooltip: t.common.refresh, onPressed: manualRefresh),
           ],
         ),
@@ -339,7 +346,12 @@ class ExploreScreenState extends State<ExploreScreen>
       // content, killing pull-to-refresh in the loading/empty/error
       // states without this.
       physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [appBar(), searchField(), ...body],
+      slivers: [
+        appBar(),
+        SliverToBoxAdapter(child: MaggioflixQuotaBanner(onOpenRequests: () => openMaggioflixRequests(context))),
+        searchField(),
+        ...body,
+      ],
     );
 
     Widget content;
@@ -454,7 +466,12 @@ class ExploreScreenState extends State<ExploreScreen>
     return ToolbarScrim(
       child: Row(
         children: [
-          const Spacer(),
+          const Expanded(
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: MaggioflixQuotaBanner(compact: true),
+            ),
+          ),
           FocusableActionBar(
             key: _actionBarKey,
             onNavigateLeft: _navigateToSidebar,
@@ -462,6 +479,13 @@ class ExploreScreenState extends State<ExploreScreen>
             onBack: _navigateToSidebar,
             spacing: 4,
             actions: [
+              if (sources.seerrSource != null)
+                FocusableAction(
+                  icon: Symbols.list_alt_rounded,
+                  iconColor: foregroundColor,
+                  tooltip: maggioflixMyRequestsLabel(),
+                  onPressed: () => openMaggioflixRequests(context),
+                ),
               if (active != null && sources.exploreSources.length > 1)
                 FocusableAction(
                   debugLabel: 'ExploreSourceSwitcher',

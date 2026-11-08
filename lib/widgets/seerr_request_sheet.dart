@@ -28,6 +28,7 @@ import 'focusable_list_tile.dart';
 import 'overlay_sheet.dart';
 import 'stat_chip.dart';
 import '../maggioflix_config.dart';
+import '../maggioflix/requests.dart';
 
 /// Why the sheet closed itself; a caller surfaces it on its own scaffold
 /// since the sheet is unmounting.
@@ -528,6 +529,7 @@ class _SeerrRequestSheetState extends State<SeerrRequestSheet> {
       // The sheet may be hosted by an OverlaySheetHost (no route of its own),
       // so a bare Navigator.pop would pop the screen underneath instead.
       OverlaySheetController.closeAdaptive(context);
+      maggioflixRequestsChanged.value++;
       showSuccessSnackBar(context, t.seerr.requestSubmitted);
       return;
     } on SeerrApiException catch (e) {

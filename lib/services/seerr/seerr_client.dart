@@ -211,6 +211,18 @@ class SeerrClient {
 
   static Map<String, dynamic>? _asJsonMap(Object? data) => data is Map<String, dynamic> ? data : null;
 
+  // MaggioFlix: quote dell'utente e sue richieste, con stato e download.
+  Future<Map<String, dynamic>?> getUserQuota(int userId) async =>
+      _asJsonMap(await _request('GET', '/user/$userId/quota'));
+
+  Future<Map<String, dynamic>?> getUserRequests(int userId, {int take = 30, int skip = 0}) async => _asJsonMap(
+    await _request(
+      'GET',
+      '/request',
+      query: {'take': take, 'skip': skip, 'filter': 'all', 'sort': 'added', 'requestedBy': userId},
+    ),
+  );
+
   Future<SeerrDetails> _details(String path) async {
     final data = await _request('GET', path, query: {'language': _language});
     return SeerrDetails.fromJson(data as Map<String, dynamic>);
