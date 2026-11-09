@@ -647,7 +647,7 @@ class MediaCardState extends State<MediaCard> with ContextMenuTapMixin<MediaCard
     );
     final overlays = <Widget>[
       if (item is MediaItem && _showsWatchedIndicator(item)) WatchedIndicator(item: item),
-      if (badgeLabels.isNotEmpty) _CatalogBadges(labels: badgeLabels),
+      if (badgeLabels.isNotEmpty) _CatalogBadges(labels: badgeLabels, item: catalogItem),
     ];
     return ExcludeSemantics(
       child: _CatalogFocusBorder(
@@ -1438,8 +1438,26 @@ List<String> _buildCatalogBadgeLabels(CatalogItem? item, DateTime? now) {
 
 class _CatalogBadges extends StatelessWidget {
   final List<String> labels;
+  final CatalogItem? item;
 
-  const _CatalogBadges({required this.labels});
+  const _CatalogBadges({required this.labels, this.item});
+
+  /// MaggioFlix: stato sul server a colori (verde disponibile, giallo
+  /// richiesto, azzurro in lavorazione, rosso rifiutato), il resto in nero.
+  (Color, Color) _colorsFor(String label) {
+    final state = item?.serverState;
+    if (state != null) {
+      if (label == _catalogAvailabilityBadge(state)) return (const Color(0xFF1F8A55), Colors.white);
+      if (label == _catalogRequestBadge(state)) {
+        return switch (state.request4k ?? state.request) {
+          CatalogRequestState.processing => (const Color(0xFF1785B0), Colors.white),
+          CatalogRequestState.declined || CatalogRequestState.failed => (const Color(0xFFB3261E), Colors.white),
+          _ => (const Color(0xFFE0A030), Colors.black),
+        };
+      }
+    }
+    return (Colors.black.withValues(alpha: 0.76), Colors.white);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1455,7 +1473,7 @@ class _CatalogBadges extends StatelessWidget {
             if (index > 0) const SizedBox(height: 3),
             DecoratedBox(
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.76),
+                color: _colorsFor(labels[index]).$1,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Padding(
@@ -1464,7 +1482,7 @@ class _CatalogBadges extends StatelessWidget {
                   labels[index],
                   maxLines: 1,
                   overflow: .ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: .w700, height: 1),
+                  style: TextStyle(color: _colorsFor(labels[index]).$2, fontSize: 9, fontWeight: .w700, height: 1),
                 ),
               ),
             ),

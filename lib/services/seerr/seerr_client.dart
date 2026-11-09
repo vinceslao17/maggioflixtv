@@ -223,6 +223,13 @@ class SeerrClient {
     ),
   );
 
+  // MaggioFlix: dettagli grezzi per il calendario (prossimo episodio, stagioni sul server, date di uscita).
+  Future<Map<String, dynamic>?> getMovieRaw(int tmdbId) async =>
+      _asJsonMap(await _request('GET', '/movie/$tmdbId', query: {'language': _language}));
+
+  Future<Map<String, dynamic>?> getTvRaw(int tmdbId) async =>
+      _asJsonMap(await _request('GET', '/tv/$tmdbId', query: {'language': _language}));
+
   Future<SeerrDetails> _details(String path) async {
     final data = await _request('GET', path, query: {'language': _language});
     return SeerrDetails.fromJson(data as Map<String, dynamic>);

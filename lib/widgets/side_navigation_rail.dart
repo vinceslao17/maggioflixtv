@@ -36,6 +36,7 @@ import '../i18n/strings.g.dart';
 import '../maggioflix_config.dart';
 import '../maggioflix/requests.dart';
 import '../maggioflix/branding.dart';
+import '../maggioflix/calendar.dart';
 
 enum _LibraryNavSection { visible, hidden }
 
@@ -483,6 +484,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
   // MaggioFlix: sottomenu Request (Cerca, Le mie richieste).
   static const _kRequestBrowse = 'requestBrowse';
   static const _kMyRequests = 'myRequests';
+  static const _kCalendar = 'mfCalendar';
   bool _requestExpanded = false;
   static const _kLibraryItemPrefix = 'library';
 
@@ -689,7 +691,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
       _kHome,
       if (hasNowPlaying) _kNowPlaying,
       _kLibraries,
-      if (hasExplore) ...[_kExplore, _kRequestBrowse, _kMyRequests],
+      if (hasExplore) ...[_kExplore, _kRequestBrowse, _kMyRequests, _kCalendar],
       _kSearch,
       if (_showDownloads) _kDownloads,
       _kSettings,
@@ -787,7 +789,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
         if (hasLiveTv) 'liveTv',
         if (hasExplore) ...[
           _kExplore,
-          if (_requestExpanded && !isCollapsed) ...[_kRequestBrowse, _kMyRequests],
+          if (_requestExpanded && !isCollapsed) ...[_kRequestBrowse, _kMyRequests, _kCalendar],
         ],
       ],
       if (_showDownloads) _kDownloads,
@@ -1225,6 +1227,12 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
                   icon: Symbols.list_alt_rounded,
                   label: maggioflixMyRequestsLabel(),
                   onTap: () => openMaggioflixRequests(context),
+                ),
+                _buildRequestChild(
+                  focusKey: _kCalendar,
+                  icon: Symbols.calendar_month_rounded,
+                  label: maggioflixCalendarLabel(),
+                  onTap: () => openMaggioflixCalendar(context),
                 ),
               ],
             ),

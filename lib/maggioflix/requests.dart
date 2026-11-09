@@ -15,6 +15,8 @@ import '../i18n/strings.g.dart';
 import '../media/media_kind.dart';
 import '../models/catalog/catalog_item.dart';
 import '../providers/catalog_sources_provider.dart';
+import '../services/deep_links/deep_link_service.dart';
+import '../utils/platform_detector.dart';
 import '../services/catalog/seerr_catalog_source.dart';
 import '../utils/app_logger.dart';
 import '../utils/catalog_navigation_helper.dart';
@@ -112,6 +114,7 @@ class MfRequest {
   final MediaKind kind;
   final int? tmdbId;
   final DateTime? createdAt;
+  final DateTime? updatedAt;
   final List<int> seasons;
 
   /// Stato del contenuto in Seerr: 1 sconosciuto, 2 in attesa, 3 in
@@ -130,6 +133,7 @@ class MfRequest {
     required this.kind,
     required this.tmdbId,
     required this.createdAt,
+    this.updatedAt,
     required this.seasons,
     required this.mediaStatus,
     required this.downloads,
@@ -149,6 +153,7 @@ class MfRequest {
       kind: type == 'tv' ? MediaKind.show : MediaKind.movie,
       tmdbId: _int(media['tmdbId']),
       createdAt: DateTime.tryParse('${json['createdAt'] ?? ''}')?.toLocal(),
+      updatedAt: DateTime.tryParse('${json['updatedAt'] ?? ''}')?.toLocal(),
       seasons: [
         if (json['seasons'] is List)
           for (final s in json['seasons'] as List)
@@ -162,6 +167,16 @@ class MfRequest {
       ],
     );
   }
+
+  /// Il titolo richiesto è sul server.
+  bool get isAvailable => status == 5 || mediaStatus == 5;
+
+  /// Richiesta ancora aperta: in attesa, approvata o in download.
+  bool get isInProgress => !isAvailable && (status == 1 || status == 2 || downloads.isNotEmpty);
+
+  /// Comando "Guarda": apre e avvia il titolo sul server.
+  String? get playLink =>
+      tmdbId == null ? null : 'maggioflix://play?type=${kind == MediaKind.movie ? 'movie' : 'show'}&tmdb=$tmdbId';
 
   /// Avanzamento complessivo dei download (0-1), null se non scarica nulla.
   double? get progress {
@@ -193,7 +208,14 @@ String maggioflixMyRequestsLabel() => _tr('Le mie richieste', 'My requests');
 
 /// Apre la pagina "Le mie richieste".
 void openMaggioflixRequests(BuildContext context) {
-  unawaited(Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const MaggioflixRequestsScreen())));
+  final phone = !PlatformDetector.isTV() && !PlatformDetector.isDesktopOS();
+  unawaited(
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => phone ? const MaggioflixRequestsPhonePage() : const MaggioflixRequestsScreen(),
+      ),
+    ),
+  );
 }
 
 String _period(int? days) {
@@ -210,14 +232,19 @@ String _period(int? days) {
 
 /// Riepilogo delle quote: film e stagioni ancora richiedibili nel periodo.
 /// Si nasconde quando Seerr non è collegato o le quote non si leggono.
+enum MfQuotaStyle { banner, compact, card, pill }
+
 class MaggioflixQuotaBanner extends StatefulWidget {
   /// Versione su una riga, per la barra della TV.
   final bool compact;
 
+  /// Aspetto: banner (vecchia pagina), compact (TV), card con barre e pillola (telefono).
+  final MfQuotaStyle? style;
+
   /// Se presente, il banner mostra "Le mie richieste" e lo apre al tocco.
   final VoidCallback? onOpenRequests;
 
-  const MaggioflixQuotaBanner({super.key, this.compact = false, this.onOpenRequests});
+  const MaggioflixQuotaBanner({super.key, this.compact = false, this.onOpenRequests, this.style});
 
   @override
   State<MaggioflixQuotaBanner> createState() => _MaggioflixQuotaBannerState();
@@ -272,7 +299,125 @@ class _MaggioflixQuotaBannerState extends State<MaggioflixQuotaBanner> {
     }
     final quota = _quota;
     if (source == null || quota == null) return const SizedBox.shrink();
-    return widget.compact ? _buildCompact(context, quota) : _buildFull(context, quota);
+    return switch (widget.style ?? (widget.compact ? MfQuotaStyle.compact : MfQuotaStyle.banner)) {
+      MfQuotaStyle.compact => _buildCompact(context, quota),
+      MfQuotaStyle.banner => _buildFull(context, quota),
+      MfQuotaStyle.card => _buildCard(context, quota),
+      MfQuotaStyle.pill => _buildPill(context, quota),
+    };
+  }
+
+  /// Pillola della testata (telefono): film e stagioni che restano.
+  Widget _buildPill(BuildContext context, MfQuota quota) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.7);
+    Widget part(IconData icon, MfQuotaStatus q) {
+      final color = q.restricted ? theme.colorScheme.error : theme.colorScheme.onSurface;
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppIcon(icon, size: 16, color: q.restricted ? color : muted),
+          const SizedBox(width: 4),
+          Text(_shortValue(q), style: theme.textTheme.labelLarge?.copyWith(color: color, fontWeight: FontWeight.w600)),
+        ],
+      );
+    }
+
+    return Semantics(
+      button: widget.onOpenRequests != null,
+      label: _tr(
+        'Questa settimana ti restano ${quota.movie.remaining ?? 0} film e ${quota.tv.remaining ?? 0} stagioni',
+        '${quota.movie.remaining ?? 0} movies and ${quota.tv.remaining ?? 0} seasons left',
+      ),
+      child: Material(
+        color: theme.colorScheme.surfaceContainerHigh,
+        shape: StadiumBorder(side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5))),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: widget.onOpenRequests,
+          child: ExcludeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  part(Symbols.movie_rounded, quota.movie),
+                  Container(
+                    width: 1,
+                    height: 16,
+                    margin: const EdgeInsets.symmetric(horizontal: 10),
+                    color: theme.colorScheme.outlineVariant,
+                  ),
+                  part(Symbols.tv_rounded, quota.tv),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Riquadro "Questa settimana" con le barre di quanto hai usato.
+  Widget _buildCard(BuildContext context, MfQuota quota) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.65);
+    final samePeriod = quota.movie.days == quota.tv.days;
+    final period = samePeriod ? _period(quota.movie.days) : '';
+    final heading = switch (period) {
+      'a settimana' || 'per week' => _tr('Questa settimana', 'This week'),
+      'al giorno' || 'per day' => _tr('Oggi', 'Today'),
+      'al mese' || 'per month' => _tr('Questo mese', 'This month'),
+      _ => _tr('Le tue richieste', 'Your requests'),
+    };
+
+    Widget meter(String label, MfQuotaStatus q) {
+      final limit = q.limit ?? 0;
+      final used = q.used;
+      final value = q.unlimited || limit == 0 ? 0.0 : (used / limit).clamp(0.0, 1.0).toDouble();
+      final text = q.unlimited
+          ? _tr('illimitate', 'unlimited')
+          : _tr('$used di $limit ${used == 1 ? 'usato' : 'usati'}', '$used of $limit used');
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
+              Text(text, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: value,
+              minHeight: 6,
+              color: const Color(0xFFE5484D),
+              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(heading, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          meter(_tr('Film', 'Movies'), quota.movie),
+          const SizedBox(height: 12),
+          meter(_tr('Stagioni di serie', 'Series seasons'), quota.tv),
+        ],
+      ),
+    );
   }
 
   String _shortValue(MfQuotaStatus q) => q.unlimited ? '∞' : '${q.remaining ?? 0}/${q.limit}';
@@ -392,132 +537,142 @@ class _MaggioflixQuotaBannerState extends State<MaggioflixQuotaBanner> {
 // Pagina "Le mie richieste"
 // ---------------------------------------------------------------------------
 
-class MaggioflixRequestsScreen extends StatefulWidget {
-  const MaggioflixRequestsScreen({super.key});
+/// Elenco delle richieste dell'utente, condiviso da pagina TV/PC e scheda del
+/// telefono. Si aggiorna da solo: ogni 5 s se qualcosa è in corso, altrimenti
+/// ogni 30 s, e subito dopo ogni nuova richiesta.
+class MfRequestsController extends ChangeNotifier {
+  MfRequestsController() {
+    maggioflixRequestsChanged.addListener(silentReload);
+    _poll = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!pollingEnabled) return;
+      _ticks++;
+      if (hasActive || _ticks % 6 == 0) silentReload();
+    });
+  }
 
-  @override
-  State<MaggioflixRequestsScreen> createState() => _MaggioflixRequestsScreenState();
-}
+  static const pageSize = 30;
 
-class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
-  static const _pageSize = 30;
+  /// Aggiornamento automatico attivo (spento quando la scheda non si vede).
+  bool pollingEnabled = true;
 
-  List<MfRequest> _requests = const [];
-  int _total = 0;
-  bool _loading = true;
-  bool _loadingMore = false;
-  bool _failed = false;
+  SeerrCatalogSource? _source;
+  List<MfRequest> requests = const [];
+  int total = 0;
+  bool loading = true;
+  bool loadingMore = false;
+  bool failed = false;
   int _generation = 0;
   Timer? _poll;
   int _ticks = 0;
   bool _inFlight = false;
-
-  bool get _hasActive =>
-      _requests.any((r) => r.downloads.isNotEmpty || r.status == 1 || (r.status == 2 && r.mediaStatus != 5));
+  bool _disposed = false;
   final Map<String, Future<({CatalogItem item, String? thumbUrl})?>> _items = {};
 
-  @override
-  void initState() {
-    super.initState();
-    maggioflixRequestsChanged.addListener(_silentReload);
-    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_load()));
-    // Aggiorna da solo stato e download: ogni 5 s se qualcosa è in corso,
-    // altrimenti ogni 30 s.
-    _poll = Timer.periodic(const Duration(seconds: 5), (_) {
-      _ticks++;
-      if (_hasActive || _ticks % 6 == 0) _silentReload();
-    });
+  bool get hasActive => requests.any((r) => r.downloads.isNotEmpty || r.isInProgress);
+
+  /// Richieste ancora aperte, per il numerino sulla scheda.
+  int get activeCount => requests.where((r) => r.isInProgress).length;
+
+  /// Collega la sorgente Seerr del profilo; ricarica se è cambiata.
+  bool _bound = false;
+
+  void bind(SeerrCatalogSource? source) {
+    if (_bound && identical(source, _source)) return;
+    _bound = true;
+    _source = source;
+    _items.clear();
+    requests = const [];
+    total = 0;
+    unawaited(load());
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _poll?.cancel();
-    maggioflixRequestsChanged.removeListener(_silentReload);
+    maggioflixRequestsChanged.removeListener(silentReload);
     super.dispose();
   }
 
-  void _silentReload() {
-    if (mounted && !_loading && !_inFlight) unawaited(_load(silent: true));
+  void _notify() {
+    if (!_disposed) notifyListeners();
   }
 
-  Future<void> _load({bool silent = false}) async {
-    final source = _seerrOf(context);
+  void silentReload() {
+    if (!_disposed && !loading && !_inFlight) unawaited(load(silent: true));
+  }
+
+  Future<void> load({bool silent = false}) async {
+    final source = _source;
     if (source == null) {
-      setState(() {
-        _loading = false;
-        _failed = true;
-      });
+      loading = false;
+      failed = true;
+      _notify();
       return;
     }
     final generation = ++_generation;
     if (!silent) {
-      setState(() {
-        _loading = true;
-        _failed = false;
-      });
+      loading = true;
+      failed = false;
+      _notify();
     }
     _inFlight = true;
     try {
-      final loaded = _requests.length;
-      final take = !silent || loaded < _pageSize ? _pageSize : (loaded > 200 ? 200 : loaded);
+      final loaded = requests.length;
+      final take = !silent || loaded < pageSize ? pageSize : (loaded > 200 ? 200 : loaded);
       final json = await source.client.getUserRequests(source.client.session.userId, take: take);
-      if (!mounted || generation != _generation) return;
+      if (_disposed || generation != _generation) return;
       final results = json?['results'];
       final pageInfo = json?['pageInfo'];
-      setState(() {
-        _requests = [
-          if (results is List)
-            for (final r in results)
-              if (r is Map<String, dynamic>) MfRequest.fromJson(r),
-        ];
-        _total = pageInfo is Map<String, dynamic> ? (_int(pageInfo['results']) ?? _requests.length) : _requests.length;
-        _loading = false;
-        _failed = false;
-      });
+      requests = [
+        if (results is List)
+          for (final r in results)
+            if (r is Map<String, dynamic>) MfRequest.fromJson(r),
+      ];
+      total = pageInfo is Map<String, dynamic> ? (_int(pageInfo['results']) ?? requests.length) : requests.length;
+      loading = false;
+      failed = false;
+      _notify();
     } catch (e) {
       appLogger.w('MaggioFlix: richieste Seerr non disponibili', error: e);
-      if (!mounted || generation != _generation) return;
+      if (_disposed || generation != _generation) return;
       if (!silent) {
-        setState(() {
-          _loading = false;
-          _failed = true;
-        });
+        loading = false;
+        failed = true;
+        _notify();
       }
     } finally {
       _inFlight = false;
     }
   }
 
-  Future<void> _loadMore() async {
-    final source = _seerrOf(context);
-    if (source == null || _loadingMore) return;
-    setState(() => _loadingMore = true);
+  Future<void> loadMore() async {
+    final source = _source;
+    if (source == null || loadingMore) return;
+    loadingMore = true;
+    _notify();
     try {
-      final json = await source.client.getUserRequests(
-        source.client.session.userId,
-        take: _pageSize,
-        skip: _requests.length,
-      );
-      if (!mounted) return;
+      final json = await source.client.getUserRequests(source.client.session.userId, take: pageSize, skip: requests.length);
+      if (_disposed) return;
       final results = json?['results'];
-      setState(() {
-        _requests = [
-          ..._requests,
-          if (results is List)
-            for (final r in results)
-              if (r is Map<String, dynamic>) MfRequest.fromJson(r),
-        ];
-      });
+      requests = [
+        ...requests,
+        if (results is List)
+          for (final r in results)
+            if (r is Map<String, dynamic>) MfRequest.fromJson(r),
+      ];
     } catch (e) {
       appLogger.w('MaggioFlix: altre richieste non disponibili', error: e);
     } finally {
-      if (mounted) setState(() => _loadingMore = false);
+      loadingMore = false;
+      _notify();
     }
   }
 
-  Future<({CatalogItem item, String? thumbUrl})?> _itemFor(MfRequest request) {
+  /// Titolo, anno, locandina del contenuto richiesto (in cache).
+  Future<({CatalogItem item, String? thumbUrl})?> itemFor(MfRequest request) {
     final tmdbId = request.tmdbId;
-    final source = _seerrOf(context);
+    final source = _source;
     if (tmdbId == null || source == null) return Future.value(null);
     return _items.putIfAbsent(
       '${request.kind.name}:$tmdbId',
@@ -527,25 +682,63 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
       }),
     );
   }
+}
+
+class MaggioflixRequestsScreen extends StatefulWidget {
+  const MaggioflixRequestsScreen({super.key});
+
+  @override
+  State<MaggioflixRequestsScreen> createState() => _MaggioflixRequestsScreenState();
+}
+
+class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
+  final MfRequestsController _controller = MfRequestsController();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_changed);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final source = Provider.of<CatalogSourcesProvider>(context).seerrSource;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _controller.bind(source);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_changed);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
     final autofocusFirst = InputModeTracker.isKeyboardMode(context);
     final theme = Theme.of(context);
+    final c = _controller;
     return FocusedScrollScaffold(
       title: Text(_tr('Le mie richieste', 'My requests')),
       actions: [
         IconButton(
           tooltip: t.common.refresh,
           icon: const AppIcon(Symbols.refresh_rounded, fill: 1),
-          onPressed: () => unawaited(_load()),
+          onPressed: () => unawaited(c.load()),
         ),
       ],
       slivers: [
         const SliverToBoxAdapter(child: MaggioflixQuotaBanner()),
-        if (_loading)
+        if (c.loading)
           const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator()))
-        else if (_failed)
+        else if (c.failed)
           SliverFillRemaining(
             hasScrollBody: false,
             child: Center(
@@ -554,12 +747,12 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
                 children: [
                   Text(_tr('Impossibile caricare le richieste.', 'Could not load your requests.')),
                   const SizedBox(height: 12),
-                  OutlinedButton(onPressed: () => unawaited(_load()), child: Text(t.common.retry)),
+                  OutlinedButton(onPressed: () => unawaited(c.load()), child: Text(t.common.retry)),
                 ],
               ),
             ),
           )
-        else if (_requests.isEmpty)
+        else if (c.requests.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
             child: Center(
@@ -573,23 +766,23 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
           SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) => _RequestTile(
-                key: ValueKey('mf-request-${_requests[index].id}'),
-                request: _requests[index],
-                item: _itemFor(_requests[index]),
+                key: ValueKey('mf-request-${c.requests[index].id}'),
+                request: c.requests[index],
+                item: c.itemFor(c.requests[index]),
                 autofocus: autofocusFirst && index == 0,
               ),
-              childCount: _requests.length,
+              childCount: c.requests.length,
             ),
           ),
-          if (_requests.length < _total)
+          if (c.requests.length < c.total)
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Center(
-                  child: _loadingMore
+                  child: c.loadingMore
                       ? const CircularProgressIndicator()
                       : OutlinedButton(
-                          onPressed: () => unawaited(_loadMore()),
+                          onPressed: () => unawaited(c.loadMore()),
                           child: Text(_tr('Mostra altre', 'Show more')),
                         ),
                 ),
@@ -693,7 +886,13 @@ String _queueStatusLabel(String status) => switch (status.toLowerCase()) {
 class _LiveDownloadProgress extends StatefulWidget {
   final MfRequest request;
 
-  const _LiveDownloadProgress({required this.request});
+  /// Colore della barra (telefono: azzurro); null = colore del tema.
+  final Color? color;
+
+  /// Solo percentuale, tempo che manca ed episodi (scheda del telefono).
+  final bool compact;
+
+  const _LiveDownloadProgress({required this.request, this.color, this.compact = false});
 
   @override
   State<_LiveDownloadProgress> createState() => _LiveDownloadProgressState();
@@ -760,7 +959,15 @@ class _LiveDownloadProgressState extends State<_LiveDownloadProgress> {
         ? ''
         : r.downloads.map((d) => _queueStatusLabel(d.status)).firstWhere((l) => l.isNotEmpty, orElse: () => '');
 
-    final details = <String>[
+    final details = widget.compact
+        ? <String>[
+            '${NumberFormat('0', locale).format(safeProgress * 100)}%',
+            if (downloading && remaining != null)
+              _tr('mancano ${_formatDuration(remaining)}', '${_formatDuration(remaining)} left'),
+            if (episodes > 1) _tr('$episodes episodi', '$episodes episodes'),
+            if (statusLabel.isNotEmpty) statusLabel,
+          ]
+        : <String>[
       '${NumberFormat('0.0', locale).format(safeProgress * 100)}%',
       if (total > 0) '${_formatBytes(total - left, locale)} ${_tr('di', 'of')} ${_formatBytes(total, locale)}',
       if (speed != null && speed > 0) _formatSpeed(speed, locale),
@@ -775,7 +982,12 @@ class _LiveDownloadProgressState extends State<_LiveDownloadProgress> {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(value: safeProgress, minHeight: 6),
+          child: LinearProgressIndicator(
+            value: safeProgress,
+            minHeight: widget.compact ? 5 : 6,
+            color: widget.color,
+            backgroundColor: widget.color == null ? null : theme.colorScheme.surfaceContainerHighest,
+          ),
         ),
         const SizedBox(height: 4),
         Text(details.join(' · '), style: theme.textTheme.bodySmall?.copyWith(color: muted)),
@@ -869,6 +1081,376 @@ class _RequestTile extends StatelessWidget {
             ],
           ),
           onTap: data == null ? null : () => unawaited(navigateToCatalogItem(context, data.item)),
+        );
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Telefono: scheda "Richieste" della pagina Richiedi
+// ---------------------------------------------------------------------------
+
+/// Colori degli stati, leggibili sia su tema scuro sia chiaro.
+const Color mfGreen = Color(0xFF2EB872);
+const Color mfAmber = Color(0xFFE0A030);
+const Color mfCyan = Color(0xFF1BA8D8);
+
+enum _MfRequestFilter { active, available, all }
+
+/// Pagina a sé "Le mie richieste" sul telefono (aperta dalla notifica).
+class MaggioflixRequestsPhonePage extends StatefulWidget {
+  const MaggioflixRequestsPhonePage({super.key});
+
+  @override
+  State<MaggioflixRequestsPhonePage> createState() => _MaggioflixRequestsPhonePageState();
+}
+
+class _MaggioflixRequestsPhonePageState extends State<MaggioflixRequestsPhonePage> {
+  final MfRequestsController _controller = MfRequestsController();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final source = Provider.of<CatalogSourcesProvider>(context).seerrSource;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _controller.bind(source);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(maggioflixMyRequestsLabel())),
+      body: MaggioflixRequestsTab(controller: _controller),
+    );
+  }
+}
+
+/// Riepilogo quote, filtri e schede delle richieste con stato a colori.
+class MaggioflixRequestsTab extends StatefulWidget {
+  final MfRequestsController controller;
+
+  const MaggioflixRequestsTab({super.key, required this.controller});
+
+  @override
+  State<MaggioflixRequestsTab> createState() => _MaggioflixRequestsTabState();
+}
+
+class _MaggioflixRequestsTabState extends State<MaggioflixRequestsTab> {
+  _MfRequestFilter _filter = _MfRequestFilter.active;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_changed);
+  }
+
+  @override
+  void didUpdateWidget(MaggioflixRequestsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller)) {
+      oldWidget.controller.removeListener(_changed);
+      widget.controller.addListener(_changed);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.65);
+    final active = c.requests.where((r) => r.isInProgress).toList();
+    final available = c.requests.where((r) => r.isAvailable).toList();
+    final shown = switch (_filter) {
+      _MfRequestFilter.active => active,
+      _MfRequestFilter.available => available,
+      _MfRequestFilter.all => c.requests,
+    };
+    final now = DateTime.now();
+    final recent = available
+        .where((r) {
+          final when = r.updatedAt ?? r.createdAt;
+          return when != null && now.difference(when).inDays < 14;
+        })
+        .take(3)
+        .toList();
+
+    Widget chip(String label, _MfRequestFilter value) {
+      final selected = _filter == value;
+      return ChoiceChip(
+        label: Text(label),
+        selected: selected,
+        showCheckmark: false,
+        onSelected: (_) => setState(() => _filter = value),
+      );
+    }
+
+    Widget card(MfRequest r) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: _MfRequestCard(key: ValueKey('mf-card-${r.id}'), request: r, item: c.itemFor(r)),
+    );
+
+    final children = <Widget>[
+      const MaggioflixQuotaBanner(style: MfQuotaStyle.card),
+      const SizedBox(height: 16),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          chip(
+            active.isEmpty ? _tr('In corso', 'In progress') : _tr('In corso · ${active.length}', 'In progress · ${active.length}'),
+            _MfRequestFilter.active,
+          ),
+          chip(_tr('Disponibili', 'Available'), _MfRequestFilter.available),
+          chip(_tr('Tutte', 'All'), _MfRequestFilter.all),
+        ],
+      ),
+      const SizedBox(height: 14),
+    ];
+
+    if (c.loading) {
+      children.add(const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())));
+    } else if (c.failed) {
+      children.add(
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              Text(_tr('Impossibile caricare le richieste.', 'Could not load your requests.')),
+              const SizedBox(height: 12),
+              OutlinedButton(onPressed: () => unawaited(c.load()), child: Text(t.common.retry)),
+            ],
+          ),
+        ),
+      );
+    } else {
+      if (shown.isEmpty) {
+        children.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Text(
+              switch (_filter) {
+                _MfRequestFilter.active => _tr('Nessuna richiesta in corso.', 'Nothing in progress.'),
+                _MfRequestFilter.available => _tr('Ancora nessun titolo disponibile.', 'Nothing available yet.'),
+                _MfRequestFilter.all => _tr('Non hai ancora fatto richieste.', "You haven't requested anything yet."),
+              },
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+            ),
+          ),
+        );
+      } else {
+        children.addAll(shown.map(card));
+      }
+      if (_filter == _MfRequestFilter.active && recent.isNotEmpty) {
+        children.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 10),
+            child: Text(
+              _tr('Arrivati da poco', 'Recently arrived'),
+              style: theme.textTheme.titleSmall?.copyWith(color: muted, fontWeight: FontWeight.w700),
+            ),
+          ),
+        );
+        children.addAll(recent.map(card));
+      }
+      if (_filter == _MfRequestFilter.all && c.requests.length < c.total) {
+        children.add(
+          Center(
+            child: c.loadingMore
+                ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator())
+                : OutlinedButton(onPressed: () => unawaited(c.loadMore()), child: Text(_tr('Mostra altre', 'Show more'))),
+          ),
+        );
+      }
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => c.load(silent: true),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: children,
+      ),
+    );
+  }
+}
+
+class _MfPhoneStatus {
+  final String label;
+  final Color color;
+  final String? detail;
+
+  const _MfPhoneStatus(this.label, this.color, [this.detail]);
+}
+
+_MfPhoneStatus _phoneStatusOf(MfRequest r, CatalogItem? item, ThemeData theme) {
+  final locale = LocaleSettings.currentLocale.intlLocaleName;
+  if (r.status == 3) return _MfPhoneStatus(_tr('Rifiutata', 'Declined'), theme.colorScheme.error);
+  if (r.status == 4) return _MfPhoneStatus(_tr('Non riuscita', 'Failed'), theme.colorScheme.error);
+  if (r.isAvailable) return _MfPhoneStatus(_tr('Disponibile', 'Available'), mfGreen);
+  if (r.downloads.isNotEmpty) return _MfPhoneStatus(_tr('In download', 'Downloading'), mfCyan);
+  if (r.mediaStatus == 4) {
+    return _MfPhoneStatus(
+      _tr('Parzialmente disponibile', 'Partially available'),
+      mfGreen,
+      _tr('Gli altri episodi arrivano man mano', 'More episodes on the way'),
+    );
+  }
+  if (r.status == 1) return _MfPhoneStatus(_tr('In attesa di approvazione', 'Waiting for approval'), mfAmber);
+  final release = item?.releaseDate;
+  if (release != null && release.isAfter(DateTime.now())) {
+    return _MfPhoneStatus(
+      _tr("In attesa dell'uscita", 'Waiting for release'),
+      mfAmber,
+      _tr('Esce il ${DateFormat.yMMMMd(locale).format(release)}', 'Out ${DateFormat.yMMMMd(locale).format(release)}'),
+    );
+  }
+  if (r.mediaStatus == 3) return _MfPhoneStatus(_tr('In elaborazione', 'Processing'), mfCyan);
+  return _MfPhoneStatus(_tr('Approvata, cerco una copia', 'Approved, looking for a copy'), mfAmber);
+}
+
+class _MfRequestCard extends StatelessWidget {
+  final MfRequest request;
+  final Future<({CatalogItem item, String? thumbUrl})?> item;
+
+  const _MfRequestCard({super.key, required this.request, required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<({CatalogItem item, String? thumbUrl})?>(
+      future: item,
+      builder: (context, snapshot) {
+        final data = snapshot.data;
+        final theme = Theme.of(context);
+        final muted = theme.colorScheme.onSurface.withValues(alpha: 0.65);
+        final status = _phoneStatusOf(request, data?.item, theme);
+        final title = data?.item.title ?? (snapshot.connectionState == ConnectionState.done ? '—' : '…');
+        final seasons = request.kind == MediaKind.show && request.seasons.isNotEmpty
+            ? (request.seasons.length == 1
+                  ? _tr('Stagione ${request.seasons.first}', 'Season ${request.seasons.first}')
+                  : _tr('Stagioni ${request.seasons.join(', ')}', 'Seasons ${request.seasons.join(', ')}'))
+            : null;
+        final meta = <String>[
+          request.kind == MediaKind.movie ? _tr('Film', 'Movie') : _tr('Serie TV', 'TV show'),
+          if (data?.item.year case final year?) '$year',
+          if (request.is4k) '4K',
+        ];
+        final playLink = request.playLink;
+
+        return Material(
+          color: theme.colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: data == null ? null : () => unawaited(navigateToCatalogItem(context, data.item)),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 56,
+                      height: 84,
+                      child: data?.thumbUrl == null
+                          ? ColoredBox(
+                              color: theme.colorScheme.surfaceContainerHighest,
+                              child: Center(
+                                child: AppIcon(
+                                  request.kind == MediaKind.movie ? Symbols.movie_rounded : Symbols.tv_rounded,
+                                  color: muted,
+                                ),
+                              ),
+                            )
+                          : Image.network(
+                              data!.thumbUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stack) =>
+                                  ColoredBox(color: theme.colorScheme.surfaceContainerHighest),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          seasons == null ? title : '$title · $seasons',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(meta.join(' · '), style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(color: status.color, shape: BoxShape.circle),
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                status.label,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: status.color,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (request.downloads.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          _LiveDownloadProgress(request: request, color: mfCyan, compact: true),
+                        ] else if (status.detail != null) ...[
+                          const SizedBox(height: 3),
+                          Text(status.detail!, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (request.isAvailable && playLink != null) ...[
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      onPressed: () => DeepLinkService.instance.receive(playLink),
+                      icon: const AppIcon(Symbols.play_arrow_rounded, fill: 1, size: 18),
+                      label: Text(_tr('Guarda', 'Watch')),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: theme.colorScheme.onSurface,
+                        foregroundColor: theme.colorScheme.surface,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
         );
       },
     );

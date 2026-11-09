@@ -38,6 +38,14 @@ import '../widgets/tv_spotlight_scaffold.dart';
 import 'catalog_search_screen.dart';
 import 'libraries/state_messages.dart';
 import '../maggioflix/requests.dart';
+import '../maggioflix/calendar.dart';
+import '../media/catalog_item_ref.dart';
+import '../media/media_kind.dart';
+import '../models/catalog/catalog_metadata.dart';
+import '../services/catalog/seerr_catalog_source.dart';
+import '../services/deep_links/deep_link_service.dart';
+import '../utils/catalog_navigation_helper.dart';
+import '../widgets/seerr_request_sheet.dart';
 
 /// The Explore tab: watchlist + discover rows from the active external
 /// catalog source (Trakt). Only mounted when a source is connected (the tab
@@ -73,6 +81,14 @@ class ExploreScreenState extends State<ExploreScreen>
   final _sourceMenuKey = GlobalKey<AppMenuButtonState<CatalogSourceId>>();
 
   final _tvBrowseRailKey = GlobalKey<TvBrowseRailState>();
+
+  // MaggioFlix (telefono): schede Scopri / Richieste / Calendario.
+  int _mfTab = 0;
+  bool _mfCalendarOpened = false;
+  bool _mfTabVisible = true;
+  _MfDiscoverFilter _mfFilter = _MfDiscoverFilter.all;
+  final MfRequestsController _mfRequests = MfRequestsController()..pollingEnabled = false;
+  bool get _mfTabbed => !PlatformDetector.isTV() && !PlatformDetector.isDesktopOS();
   final _hubFocusMemory = HubFocusMemory();
   final TvSpotlightController _spotlight = TvSpotlightController();
 
@@ -100,12 +116,39 @@ class ExploreScreenState extends State<ExploreScreen>
     _sources = context.read<CatalogSourcesProvider>();
     _activeSourceId = _sources.activeSource?.id;
     _sources.addListener(_onActiveSourceChanged);
+    if (_mfTabbed) {
+      _mfRequests.addListener(_onMfRequestsChanged);
+      _scheduleMfBind();
+    }
   }
+
+  void _scheduleMfBind() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _mfTabbed) _mfRequests.bind(_sources.seerrSource);
+    });
+  }
+
+  void _onMfRequestsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _setMfTab(int index) {
+    if (index == _mfTab) return;
+    setState(() {
+      _mfTab = index;
+      if (index == 2) _mfCalendarOpened = true;
+    });
+    _updateMfPolling();
+    if (index == 1) _mfRequests.silentReload();
+  }
+
+  void _updateMfPolling() => _mfRequests.pollingEnabled = _mfTabVisible && _mfTab == 1;
 
   /// A live query belongs to the source it was typed against, so a source
   /// switch re-runs it instead of leaving the previous source's results
   /// sitting under the new source's name.
   void _onActiveSourceChanged() {
+    if (_mfTabbed) _scheduleMfBind();
     final id = _sources.activeSource?.id;
     if (id == _activeSourceId) return;
     _activeSourceId = id;
@@ -136,14 +179,22 @@ class ExploreScreenState extends State<ExploreScreen>
   @override
   void onTabShown() {
     _explore.ensureFresh();
+    _mfTabVisible = true;
+    _updateMfPolling();
+    if (_mfTabbed) _mfRequests.silentReload();
   }
 
   @override
-  void onTabHidden() {}
+  void onTabHidden() {
+    _mfTabVisible = false;
+    _updateMfPolling();
+  }
 
   @override
   void dispose() {
     _sources.removeListener(_onActiveSourceChanged);
+    _mfRequests.removeListener(_onMfRequestsChanged);
+    _mfRequests.dispose();
     _spotlight.dispose();
     super.dispose();
   }
@@ -291,6 +342,8 @@ class ExploreScreenState extends State<ExploreScreen>
         builder: (context) => _buildTvContent(rowHubs, sources),
       );
     }
+
+    if (_mfTabbed) return _buildMaggioflixPhone(context, explore, sources, rowHubs);
 
     // One header mode for every state. Flipping floating/pinned between the
     // loading/empty scroll view and the content scroll view swaps the
@@ -512,6 +565,215 @@ class ExploreScreenState extends State<ExploreScreen>
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // MaggioFlix: pagina Richiedi del telefono
+  // ---------------------------------------------------------------------------
+
+  String _mfTr(String it, String en) => LocaleSettings.currentLocale.languageCode == 'it' ? it : en;
+
+  Widget _buildMaggioflixPhone(
+    BuildContext context,
+    ExploreProvider explore,
+    CatalogSourcesProvider sources,
+    List<ExploreRowHub> rowHubs,
+  ) {
+    final theme = Theme.of(context);
+    final header = SafeArea(
+      bottom: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    t.navigation.explore,
+                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (sources.seerrSource != null)
+                  MaggioflixQuotaBanner(style: MfQuotaStyle.pill, onOpenRequests: () => _setMfTab(1)),
+              ],
+            ),
+          ),
+          SearchInputField(
+            controller: searchController,
+            focusNode: searchFocusNode,
+            debugLabel: searchDebugLabel,
+            hintText: _mfTr('Cerca film e serie', 'Search movies and shows'),
+            onEditingComplete: handleSearchSubmit,
+          ),
+          if (!searchIsActive)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: _MfSegmentedTabs(
+                index: _mfTab,
+                labels: [
+                  _mfTr('Scopri', 'Discover'),
+                  _mfTr('Richieste', 'Requests'),
+                  maggioflixCalendarLabel(),
+                ],
+                badges: [0, _mfRequests.activeCount, 0],
+                onChanged: _setMfTab,
+              ),
+            ),
+        ],
+      ),
+    );
+
+    final Widget body;
+    if (searchIsActive) {
+      body = RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: CustomScrollView(physics: const AlwaysScrollableScrollPhysics(), slivers: [_buildSearchResults()]),
+      );
+    } else {
+      body = IndexedStack(
+        index: _mfTab,
+        children: [
+          _buildMfDiscover(explore, sources, rowHubs),
+          MaggioflixRequestsTab(controller: _mfRequests),
+          if (_mfCalendarOpened) const MaggioflixCalendarView() else const SizedBox.shrink(),
+        ],
+      );
+    }
+
+    return Scaffold(
+      body: Column(
+        children: [
+          header,
+          Expanded(child: body),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMfDiscover(ExploreProvider explore, CatalogSourcesProvider sources, List<ExploreRowHub> rowHubs) {
+    final kind = switch (_mfFilter) {
+      _MfDiscoverFilter.all => null,
+      _MfDiscoverFilter.movies => MediaKind.movie,
+      _MfDiscoverFilter.series => MediaKind.show,
+    };
+    final rows = <({ExploreRowHub row, MediaHub hub})>[
+      for (final rowHub in rowHubs)
+        if (kind == null)
+          (row: rowHub, hub: rowHub.hub)
+        else if (rowHub.hub.items.where((i) => i.kind == kind).toList() case final items when items.isNotEmpty)
+          (
+            row: rowHub,
+            hub: MediaHub(
+              id: rowHub.hub.id,
+              identifier: rowHub.hub.identifier,
+              title: rowHub.hub.title,
+              type: rowHub.hub.type,
+              items: items,
+              size: items.length,
+            ),
+          ),
+    ];
+
+    // Titolo in evidenza: il primo della prima riga con un'immagine di sfondo.
+    MediaItem? heroItem;
+    CatalogItem? heroCatalog;
+    String? heroLabel;
+    for (final r in rows) {
+      for (final item in r.hub.items) {
+        final catalog = item.catalogItem;
+        if (catalog != null && catalog.backdropUrl != null) {
+          heroItem = item;
+          heroCatalog = catalog;
+          heroLabel = r.hub.title;
+          break;
+        }
+      }
+      if (heroItem != null) break;
+    }
+
+    Widget chip(String label, _MfDiscoverFilter value) => ChoiceChip(
+      label: Text(label),
+      selected: _mfFilter == value,
+      showCheckmark: false,
+      onSelected: (_) => setState(() => _mfFilter = value),
+    );
+
+    final slivers = <Widget>[
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              chip(_mfTr('Tutto', 'All'), _MfDiscoverFilter.all),
+              chip(_mfTr('Film', 'Movies'), _MfDiscoverFilter.movies),
+              chip(_mfTr('Serie TV', 'TV shows'), _MfDiscoverFilter.series),
+            ],
+          ),
+        ),
+      ),
+    ];
+
+    if (rowHubs.isEmpty && explore.isLoading) {
+      slivers.add(const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator())));
+    } else if (rowHubs.isEmpty && explore.state == ExploreLoadState.error) {
+      slivers.add(
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: ErrorStateWidget(
+            message: explore.errorMessage ?? t.explore.emptyTitle,
+            icon: Symbols.error_outline_rounded,
+            onRetry: () => unawaited(_explore.load()),
+          ),
+        ),
+      );
+    } else if (rows.isEmpty) {
+      slivers.add(
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: EmptyStateWidget(
+            message: t.explore.emptyMessage(source: explore.activeSource?.displayName ?? ''),
+            icon: Symbols.library_add_rounded,
+          ),
+        ),
+      );
+    } else {
+      if (heroItem != null && heroCatalog != null) {
+        slivers.add(
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: _MfHeroCard(item: heroCatalog, label: heroLabel, seerr: sources.seerrSource),
+            ),
+          ),
+        );
+      }
+      for (var i = 0; i < rows.length; i++) {
+        final filtered = kind != null;
+        slivers.add(
+          SliverToBoxAdapter(
+            child: HubSection(
+              key: filtered ? null : _hubKeysById[rows[i].hub.id],
+              hub: rows[i].hub,
+              totalResults: filtered ? null : rows[i].row.totalResults,
+              focusMemory: _hubFocusMemory,
+              icon: _rowIcon(rows[i].row.row),
+              loadMoreItems: !filtered && rows[i].hub.more ? () => _explore.loadAllForHub(rows[i].row) : null,
+              onNavigateToSidebar: _navigateToSidebar,
+            ),
+          ),
+        );
+      }
+      slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 16)));
+    }
+
+    return RefreshIndicator(
+      onRefresh: _handleRefresh,
+      child: CustomScrollView(physics: const AlwaysScrollableScrollPhysics(), slivers: slivers),
+    );
+  }
+
   Widget _buildTvContent(List<ExploreRowHub> rowHubs, CatalogSourcesProvider sources) {
     final tvHubs = [for (final rowHub in rowHubs) rowHub.hub];
     return TvSpotlightScaffold(
@@ -564,6 +826,225 @@ class ExploreScreenState extends State<ExploreScreen>
             ),
           TvToolbarOverlay(child: _buildTvToolbar(sources)),
         ],
+      ),
+    );
+  }
+}
+
+
+enum _MfDiscoverFilter { all, movies, series }
+
+/// Tre schede a pillola in alto nella pagina Richiedi del telefono.
+class _MfSegmentedTabs extends StatelessWidget {
+  final int index;
+  final List<String> labels;
+  final List<int> badges;
+  final ValueChanged<int> onChanged;
+
+  const _MfSegmentedTabs({required this.index, required this.labels, required this.badges, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < labels.length; i++)
+            Expanded(
+              child: Semantics(
+                selected: i == index,
+                button: true,
+                child: Material(
+                  color: i == index ? theme.colorScheme.onSurface : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => onChanged(i),
+                    child: SizedBox(
+                      height: 38,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              labels[i],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: i == index
+                                    ? theme.colorScheme.surface
+                                    : theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                                fontWeight: i == index ? FontWeight.w700 : FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          if (badges[i] > 0) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              constraints: const BoxConstraints(minWidth: 18),
+                              height: 18,
+                              padding: const EdgeInsets.symmetric(horizontal: 5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFC9262B),
+                                borderRadius: BorderRadius.circular(9),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                '${badges[i]}',
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Titolo in evidenza in cima a "Scopri": sfondo, dati essenziali e azioni.
+class _MfHeroCard extends StatelessWidget {
+  final CatalogItem item;
+  final String? label;
+  final SeerrCatalogSource? seerr;
+
+  const _MfHeroCard({required this.item, this.label, this.seerr});
+
+  String _tr(String it, String en) => LocaleSettings.currentLocale.languageCode == 'it' ? it : en;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final state = item.serverState;
+    final available =
+        state?.availability == CatalogAvailability.available || state?.availability4k == CatalogAvailability.available;
+    final requested = !available && (state?.request != null || state?.request4k != null);
+    final tmdbId = item.ids.tmdb;
+    final runtime = item.runtimeMinutes;
+    final meta = <String>[
+      if (item.year != null) '${item.year}',
+      if (item.genres?.isNotEmpty ?? false) item.genres!.first,
+      if (runtime != null && runtime > 0 && item.kind == MediaKind.movie)
+        runtime >= 60 ? '${runtime ~/ 60} h ${(runtime % 60).toString().padLeft(2, '0')}' : '$runtime min',
+      if (item.kind == MediaKind.show) _tr('Serie TV', 'TV show'),
+      if (item.rating != null && item.rating! > 0) '★ ${item.rating!.toStringAsFixed(1).replaceAll('.', _tr(',', '.'))}',
+    ];
+    final playLink = tmdbId == null ? null : 'maggioflix://play?type=${item.kind == MediaKind.movie ? 'movie' : 'show'}&tmdb=$tmdbId';
+
+    final Widget primary;
+    if (available && playLink != null) {
+      primary = FilledButton.icon(
+        onPressed: () => DeepLinkService.instance.receive(playLink),
+        icon: const AppIcon(Symbols.play_arrow_rounded, fill: 1, size: 18),
+        label: Text(_tr('Guarda', 'Watch')),
+        style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+      );
+    } else if (requested) {
+      primary = FilledButton.icon(
+        onPressed: null,
+        icon: const AppIcon(Symbols.schedule_rounded, size: 18),
+        label: Text(_tr('Richiesto', 'Requested')),
+      );
+    } else if (seerr != null && tmdbId != null) {
+      primary = FilledButton.icon(
+        onPressed: () => unawaited(
+          showSeerrRequestSheet(context, source: seerr!, kind: item.kind, tmdbId: tmdbId, title: item.title),
+        ),
+        icon: const AppIcon(Symbols.add_rounded, size: 18),
+        label: Text(_tr('Richiedi', 'Request')),
+        style: FilledButton.styleFrom(backgroundColor: const Color(0xFFC9262B), foregroundColor: Colors.white),
+      );
+    } else {
+      primary = const SizedBox.shrink();
+    }
+
+    return Material(
+      color: theme.colorScheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => unawaited(navigateToCatalogItem(context, item)),
+        child: SizedBox(
+          height: 220,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(
+                item.backdropUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stack) => const SizedBox.shrink(),
+              ),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    stops: [0.25, 1.0],
+                    colors: [Color(0x00000000), Color(0xE6000000)],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (label != null)
+                      Text(
+                        label!.toUpperCase(),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: const Color(0xFFFFB4A8),
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    const SizedBox(height: 4),
+                    Text(
+                      item.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.headlineSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                    ),
+                    if (meta.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        meta.join(' · '),
+                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.white.withValues(alpha: 0.85)),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        primary,
+                        const SizedBox(width: 8),
+                        OutlinedButton(
+                          onPressed: () => unawaited(navigateToCatalogItem(context, item)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+                          ),
+                          child: Text(_tr('Dettagli', 'Details')),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
