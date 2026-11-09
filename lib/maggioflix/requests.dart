@@ -299,7 +299,9 @@ class _MaggioflixQuotaBannerState extends State<MaggioflixQuotaBanner> {
           chip(Symbols.movie_rounded, _tr('Film', 'Movies'), quota.movie),
           const SizedBox(width: 16),
           chip(Symbols.tv_rounded, _tr('Stagioni', 'Seasons'), quota.tv),
-          if (samePeriod && _period(quota.movie.days).isNotEmpty) ...[
+          if (samePeriod &&
+              !(quota.movie.unlimited && quota.tv.unlimited) &&
+              _period(quota.movie.days).isNotEmpty) ...[
             const SizedBox(width: 12),
             Text(
               _tr('rimasti ${_period(quota.movie.days)}', 'left ${_period(quota.movie.days)}'),

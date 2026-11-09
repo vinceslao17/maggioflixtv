@@ -466,12 +466,9 @@ class ExploreScreenState extends State<ExploreScreen>
     return ToolbarScrim(
       child: Row(
         children: [
-          const Expanded(
-            child: Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: MaggioflixQuotaBanner(compact: true),
-            ),
-          ),
+          const Spacer(),
+          const MaggioflixQuotaBanner(compact: true),
+          const SizedBox(width: 16),
           FocusableActionBar(
             key: _actionBarKey,
             onNavigateLeft: _navigateToSidebar,

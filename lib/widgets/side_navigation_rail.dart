@@ -35,7 +35,6 @@ import '../widgets/backend_badge.dart';
 import '../i18n/strings.g.dart';
 import '../maggioflix_config.dart';
 import '../maggioflix/requests.dart';
-import '../screens/catalog_search_screen.dart';
 
 enum _LibraryNavSection { visible, hidden }
 
@@ -480,9 +479,8 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
   static const _kFullscreen = 'fullscreen';
   static const _kHiddenLibraries = 'hiddenLibraries';
   static const _kServerHeaderPrefix = 'serverHeader';
-  // MaggioFlix: sottomenu Request (Sfoglia, Cerca, Le mie richieste).
+  // MaggioFlix: sottomenu Request (Cerca, Le mie richieste).
   static const _kRequestBrowse = 'requestBrowse';
-  static const _kRequestSearch = 'requestSearch';
   static const _kMyRequests = 'myRequests';
   bool _requestExpanded = false;
   static const _kLibraryItemPrefix = 'library';
@@ -690,7 +688,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
       _kHome,
       if (hasNowPlaying) _kNowPlaying,
       _kLibraries,
-      if (hasExplore) ...[_kExplore, _kRequestBrowse, _kRequestSearch, _kMyRequests],
+      if (hasExplore) ...[_kExplore, _kRequestBrowse, _kMyRequests],
       _kSearch,
       if (_showDownloads) _kDownloads,
       _kSettings,
@@ -788,7 +786,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
         if (hasLiveTv) 'liveTv',
         if (hasExplore) ...[
           _kExplore,
-          if (_requestExpanded && !isCollapsed) ...[_kRequestBrowse, _kRequestSearch, _kMyRequests],
+          if (_requestExpanded && !isCollapsed) ...[_kRequestBrowse, _kMyRequests],
         ],
       ],
       if (_showDownloads) _kDownloads,
@@ -1128,7 +1126,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
   }
 
   /// MaggioFlix: Request come sottomenu con freccia, come le librerie dei
-  /// server: si apre su Sfoglia, Cerca e Le mie richieste.
+  /// server: si apre su Cerca (la pagina Request) e Le mie richieste.
   Widget _buildRequestSection({required bool isCollapsed}) {
     final t = tokens(context);
     final isRequestTab = widget.selectedTab == NavigationTabId.explore;
@@ -1185,16 +1183,10 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
                 const SizedBox(height: 4),
                 _buildRequestChild(
                   focusKey: _kRequestBrowse,
-                  icon: Symbols.explore_rounded,
-                  label: maggioflixBrowseLabel(),
-                  isSelected: isRequestTab,
-                  onTap: () => widget.onDestinationSelected(NavigationTabId.explore),
-                ),
-                _buildRequestChild(
-                  focusKey: _kRequestSearch,
                   icon: Symbols.search_rounded,
                   label: Translations.of(context).common.search,
-                  onTap: _openRequestSearch,
+                  isSelected: isRequestTab,
+                  onTap: () => widget.onDestinationSelected(NavigationTabId.explore),
                 ),
                 _buildRequestChild(
                   focusKey: _kMyRequests,
@@ -1237,15 +1229,6 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
       expandedHeight: 40,
       suppressSelectedBackground: widget.isSidebarFocused,
       onNavigateRight: widget.onNavigateToContent,
-    );
-  }
-
-  void _openRequestSearch() {
-    final sources = context.read<CatalogSourcesProvider?>();
-    final source = sources?.seerrSource ?? sources?.activeSource;
-    if (source == null) return;
-    unawaited(
-      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CatalogSearchScreen(source: source))),
     );
   }
 
