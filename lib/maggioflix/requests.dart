@@ -119,7 +119,11 @@ class MfRequest {
   final int mediaStatus;
   final List<MfDownload> downloads;
 
-  const MfRequest({
+  /// Quando l'app ha letto questi dati: base per stimare l'avanzamento
+  /// secondo per secondo fino al prossimo aggiornamento.
+  final DateTime fetchedAt;
+
+  MfRequest({
     required this.id,
     required this.status,
     required this.is4k,
@@ -129,7 +133,8 @@ class MfRequest {
     required this.seasons,
     required this.mediaStatus,
     required this.downloads,
-  });
+    DateTime? fetchedAt,
+  }) : fetchedAt = fetchedAt ?? DateTime.now();
 
   factory MfRequest.fromJson(Map<String, dynamic> json) {
     final is4k = json['is4k'] == true;
@@ -404,6 +409,11 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
   bool _failed = false;
   int _generation = 0;
   Timer? _poll;
+  int _ticks = 0;
+  bool _inFlight = false;
+
+  bool get _hasActive =>
+      _requests.any((r) => r.downloads.isNotEmpty || r.status == 1 || (r.status == 2 && r.mediaStatus != 5));
   final Map<String, Future<({CatalogItem item, String? thumbUrl})?>> _items = {};
 
   @override
@@ -411,8 +421,12 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
     super.initState();
     maggioflixRequestsChanged.addListener(_silentReload);
     WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_load()));
-    // Aggiorna da solo lo stato e l'avanzamento dei download.
-    _poll = Timer.periodic(const Duration(seconds: 20), (_) => _silentReload());
+    // Aggiorna da solo stato e download: ogni 5 s se qualcosa è in corso,
+    // altrimenti ogni 30 s.
+    _poll = Timer.periodic(const Duration(seconds: 5), (_) {
+      _ticks++;
+      if (_hasActive || _ticks % 6 == 0) _silentReload();
+    });
   }
 
   @override
@@ -423,7 +437,7 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
   }
 
   void _silentReload() {
-    if (mounted && !_loading) unawaited(_load(silent: true));
+    if (mounted && !_loading && !_inFlight) unawaited(_load(silent: true));
   }
 
   Future<void> _load({bool silent = false}) async {
@@ -442,6 +456,7 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
         _failed = false;
       });
     }
+    _inFlight = true;
     try {
       final loaded = _requests.length;
       final take = !silent || loaded < _pageSize ? _pageSize : (loaded > 200 ? 200 : loaded);
@@ -468,6 +483,8 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
           _failed = true;
         });
       }
+    } finally {
+      _inFlight = false;
     }
   }
 
@@ -618,23 +635,153 @@ _StatusInfo _statusOf(MfRequest r, ThemeData theme) {
   };
 }
 
-/// "1h 05m" da "01:05:12" o "1.02:03:04" (formato di Radarr/Sonarr).
-String? _formatTimeLeft(String? raw) {
+/// Durata da "01:05:12" o "1.02:03:04" (formato di Radarr/Sonarr).
+Duration? _parseTimeLeft(String? raw) {
   if (raw == null || raw.isEmpty) return null;
   var days = 0;
   var rest = raw;
   final dot = raw.indexOf('.');
-  if (dot > 0 && dot < raw.indexOf(':')) {
+  final colon = raw.indexOf(':');
+  if (dot > 0 && colon > dot) {
     days = int.tryParse(raw.substring(0, dot)) ?? 0;
     rest = raw.substring(dot + 1);
   }
   final parts = rest.split(':');
   if (parts.length < 2) return null;
-  final hours = (int.tryParse(parts[0]) ?? 0) + days * 24;
+  final hours = int.tryParse(parts[0]) ?? 0;
   final minutes = int.tryParse(parts[1]) ?? 0;
-  if (hours == 0 && minutes == 0) return _tr('meno di un minuto', 'under a minute');
-  if (hours == 0) return '${minutes}m';
-  return '${hours}h ${minutes.toString().padLeft(2, '0')}m';
+  final seconds = parts.length > 2 ? (double.tryParse(parts[2]) ?? 0).floor() : 0;
+  return Duration(days: days, hours: hours, minutes: minutes, seconds: seconds);
+}
+
+/// "1h 05m", "4m 12s", "12s".
+String _formatDuration(Duration d) {
+  final hours = d.inHours;
+  final minutes = d.inMinutes % 60;
+  final seconds = d.inSeconds % 60;
+  if (hours > 0) return '${hours}h ${minutes.toString().padLeft(2, '0')}m';
+  if (minutes > 0) return '${minutes}m ${seconds.toString().padLeft(2, '0')}s';
+  return '${seconds}s';
+}
+
+String _formatBytes(double bytes, String locale) {
+  const gb = 1024.0 * 1024 * 1024;
+  const mb = 1024.0 * 1024;
+  if (bytes >= gb) return '${NumberFormat('0.00', locale).format(bytes / gb)} GB';
+  return '${NumberFormat('0', locale).format(bytes / mb)} MB';
+}
+
+String _formatSpeed(double bytesPerSecond, String locale) {
+  const mb = 1024.0 * 1024;
+  if (bytesPerSecond >= mb) return '${NumberFormat('0.0', locale).format(bytesPerSecond / mb)} MB/s';
+  return '${NumberFormat('0', locale).format(bytesPerSecond / 1024)} KB/s';
+}
+
+String _queueStatusLabel(String status) => switch (status.toLowerCase()) {
+  'paused' => _tr('In pausa', 'Paused'),
+  'queued' => _tr('In coda', 'Queued'),
+  'delay' => _tr('In attesa', 'Delayed'),
+  'warning' => _tr('Attenzione: problema col download', 'Warning: download issue'),
+  'failed' => _tr('Download non riuscito', 'Download failed'),
+  'completed' => _tr('Scaricato, in importazione', 'Downloaded, importing'),
+  _ => '',
+};
+
+/// Barra di download che avanza ogni secondo: tra un aggiornamento e l'altro
+/// stima l'avanzamento dalla velocità implicita nell'orario di fine previsto
+/// che Radarr/Sonarr comunicano, poi si riallinea al dato vero.
+class _LiveDownloadProgress extends StatefulWidget {
+  final MfRequest request;
+
+  const _LiveDownloadProgress({required this.request});
+
+  @override
+  State<_LiveDownloadProgress> createState() => _LiveDownloadProgressState();
+}
+
+class _LiveDownloadProgressState extends State<_LiveDownloadProgress> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.request;
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.65);
+    final locale = LocaleSettings.currentLocale.intlLocaleName;
+    final now = DateTime.now();
+
+    final total = r.downloads.fold<double>(0, (sum, d) => sum + d.size);
+    final leftAtFetch = r.downloads.fold<double>(0, (sum, d) => sum + d.sizeLeft);
+    final downloading = r.downloads.any((d) => d.status.toLowerCase() == 'downloading');
+
+    // Fine prevista: l'orario dichiarato, altrimenti "tempo rimanente" dal momento della lettura.
+    DateTime? eta;
+    for (final d in r.downloads) {
+      final parsedLeft = _parseTimeLeft(d.timeLeft);
+      final candidate = d.estimatedCompletion ?? (parsedLeft == null ? null : r.fetchedAt.add(parsedLeft));
+      if (candidate != null && (eta == null || candidate.isAfter(eta))) eta = candidate;
+    }
+
+    var left = leftAtFetch;
+    double? speed;
+    Duration? remaining;
+    if (eta != null) {
+      remaining = eta.difference(now);
+      if (remaining.isNegative) remaining = Duration.zero;
+      final span = eta.difference(r.fetchedAt).inMilliseconds / 1000.0;
+      if (downloading && span > 0 && leftAtFetch > 0) {
+        speed = leftAtFetch / span;
+        final elapsed = now.difference(r.fetchedAt).inMilliseconds / 1000.0;
+        left = leftAtFetch - speed * elapsed;
+        // Non arriva al 100% da sola: lo conferma il prossimo aggiornamento.
+        final floor = total * 0.001;
+        if (left < floor) left = floor;
+      }
+    }
+    final progress = total > 0 ? (1 - left / total) : 0.0;
+    final safeProgress = progress < 0 ? 0.0 : (progress > 1 ? 1.0 : progress);
+
+    final episodes = r.downloads.where((d) => d.episode != null).length;
+    final statusLabel = downloading
+        ? ''
+        : r.downloads.map((d) => _queueStatusLabel(d.status)).firstWhere((l) => l.isNotEmpty, orElse: () => '');
+
+    final details = <String>[
+      '${NumberFormat('0.0', locale).format(safeProgress * 100)}%',
+      if (total > 0) '${_formatBytes(total - left, locale)} ${_tr('di', 'of')} ${_formatBytes(total, locale)}',
+      if (speed != null && speed > 0) _formatSpeed(speed, locale),
+      if (downloading && remaining != null) _tr('mancano ${_formatDuration(remaining)}', '${_formatDuration(remaining)} left'),
+      if (episodes > 1) _tr('$episodes episodi', '$episodes episodes'),
+      if (statusLabel.isNotEmpty) statusLabel,
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(value: safeProgress, minHeight: 6),
+        ),
+        const SizedBox(height: 4),
+        Text(details.join(' · '), style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+      ],
+    );
+  }
 }
 
 class _RequestTile extends StatelessWidget {
@@ -664,19 +811,6 @@ class _RequestTile extends StatelessWidget {
           if (request.createdAt case final created?)
             _tr('richiesto il ${DateFormat.yMMMd(locale).format(created)}', 'requested ${DateFormat.yMMMd(locale).format(created)}'),
         ];
-
-        final progress = request.progress;
-        String? downloadText;
-        if (progress != null) {
-          final pct = '${(progress * 100).round()}%';
-          final eta = _formatTimeLeft(request.downloads.map((d) => d.timeLeft).nonNulls.firstOrNull);
-          final episodes = request.downloads.where((d) => d.episode != null).length;
-          downloadText = [
-            pct,
-            if (eta != null) _tr('mancano $eta', '$eta left'),
-            if (episodes > 1) _tr('$episodes episodi', '$episodes episodes'),
-          ].join(' · ');
-        }
 
         return FocusableListTile(
           autofocus: autofocus,
@@ -728,16 +862,9 @@ class _RequestTile extends StatelessWidget {
                   ),
                 ],
               ),
-              if (progress != null) ...[
+              if (request.downloads.isNotEmpty) ...[
                 const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(value: progress, minHeight: 6),
-                ),
-                if (downloadText != null) ...[
-                  const SizedBox(height: 4),
-                  Text(downloadText, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
-                ],
+                _LiveDownloadProgress(request: request),
               ],
             ],
           ),
