@@ -633,7 +633,7 @@ class ExploreScreenState extends State<ExploreScreen>
                   _mfTr('Richieste', 'Requests'),
                   maggioflixCalendarLabel(),
                 ],
-                badges: [0, _mfRequests.activeCount, 0],
+                badges: const [0, 0, 0],
                 onChanged: _setMfTab,
               ),
             ),
@@ -709,12 +709,8 @@ class ExploreScreenState extends State<ExploreScreen>
       if (heroItem != null) break;
     }
 
-    Widget chip(String label, _MfDiscoverFilter value) => ChoiceChip(
-      label: Text(label),
-      selected: _mfFilter == value,
-      showCheckmark: false,
-      onSelected: (_) => setState(() => _mfFilter = value),
-    );
+    Widget chip(String label, _MfDiscoverFilter value) =>
+        MfToggleChip(label: label, selected: _mfFilter == value, onTap: () => setState(() => _mfFilter = value));
 
     final slivers = <Widget>[
       SliverToBoxAdapter(
@@ -942,13 +938,19 @@ class _MfHeroCard extends StatelessWidget {
   String _tr(String it, String en) => LocaleSettings.currentLocale.languageCode == 'it' ? it : en;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ListenableBuilder(listenable: MaggioflixLive.instance, builder: (context, _) => _buildCard(context));
+
+  Widget _buildCard(BuildContext context) {
     final theme = Theme.of(context);
     final state = item.serverState;
-    final available =
-        state?.availability == CatalogAvailability.available || state?.availability4k == CatalogAvailability.available;
-    final requested = !available && (state?.request != null || state?.request4k != null);
     final tmdbId = item.ids.tmdb;
+    final live = MaggioflixLive.instance.itemFor(item.kind, tmdbId: tmdbId, tvdbId: item.ids.tvdb);
+    final available =
+        state?.availability == CatalogAvailability.available ||
+        state?.availability4k == CatalogAvailability.available ||
+        (live?.isOnPlex ?? false);
+    final requested = !available && (state?.request != null || state?.request4k != null || live != null);
     final runtime = item.runtimeMinutes;
     final meta = <String>[
       if (item.year != null) '${item.year}',
@@ -967,6 +969,15 @@ class _MfHeroCard extends StatelessWidget {
         icon: const AppIcon(Symbols.play_arrow_rounded, fill: 1, size: 18),
         label: Text(_tr('Guarda', 'Watch')),
         style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+      );
+    } else if (requested && item.kind != MediaKind.movie && seerr != null && tmdbId != null) {
+      // Serie già richiesta: si possono chiedere le altre stagioni.
+      primary = FilledButton.tonalIcon(
+        onPressed: () => unawaited(
+          showSeerrRequestSheet(context, source: seerr!, kind: item.kind, tmdbId: tmdbId, title: item.title),
+        ),
+        icon: const AppIcon(Symbols.playlist_add_rounded, size: 18),
+        label: Text(maggioflixMoreSeasonsLabel()),
       );
     } else if (requested) {
       primary = FilledButton.icon(

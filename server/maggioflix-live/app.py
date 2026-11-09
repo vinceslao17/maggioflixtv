@@ -45,6 +45,11 @@ AUTH_DISABLED = env("AUTH_DISABLED") == "1"  # solo per prove in locale
 IMPORT_WINDOW = float(env("IMPORT_WINDOW_MINUTES", "90") or 90) * 60
 STICKY_SECONDS = 2 * 24 * 3600  # un torrent abbinato resta abbinato per 2 giorni
 QBIT_ETA_INFINITE = 8640000
+DONE_WINDOW = 12 * 3600  # torrent finiti da poco: restano nel totale del titolo
+PLEX_URL = env("PLEX_URL").rstrip("/")
+PLEX_TOKEN = env("PLEX_TOKEN")
+PLEX_SECONDS = float(env("PLEX_SECONDS", "5") or 5)
+AVAILABLE_WINDOW = float(env("AVAILABLE_WINDOW_HOURS", "6") or 6) * 3600
 
 ARRS = [
     # (tipo, 4K?, url, chiave)
@@ -92,6 +97,9 @@ class State:
         self.arr_imports: dict[str, list[dict]] = {}
         self.known: dict[str, tuple[dict, float]] = {}
         self.imports: list[dict] = []
+        # Aggiunti di recente su Plex: e' questo che rende un titolo "disponibile".
+        self.plex_ok = False
+        self.plex_available: list[dict] = []
         self.snapshot: dict | None = None
         self.snapshot_at = 0.0
 
@@ -277,6 +285,91 @@ def map_instance(kind: str, is4k: bool, url: str, key: str) -> tuple[dict[str, d
     return mapping, imports
 
 
+# ---------------------------------------------------------------------------
+# Plex: cosa e' appena comparso nell'app
+# ---------------------------------------------------------------------------
+
+def plex_get(path: str, timeout: float = 15):
+    sep = "&" if "?" in path else "?"
+    req = urllib.request.Request(
+        f"{PLEX_URL}{path}{sep}X-Plex-Token={urllib.parse.quote(PLEX_TOKEN)}",
+        headers={"Accept": "application/json", "X-Plex-Product": "MaggioFlix Live"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read() or b"{}")
+
+
+def _guid_ids(item: dict) -> tuple[int | None, int | None]:
+    tmdb = tvdb = None
+    for g in item.get("Guid") or []:
+        gid = str(g.get("id") or "")
+        if gid.startswith("tmdb://"):
+            tmdb = _int(gid[7:])
+        elif gid.startswith("tvdb://"):
+            tvdb = _int(gid[7:])
+    return tmdb, tvdb
+
+
+_show_ids: dict[str, tuple[int | None, int | None]] = {}
+
+
+def _ids_of_show(key) -> tuple[int | None, int | None]:
+    key = str(key or "")
+    if not key:
+        return None, None
+    if key not in _show_ids:
+        data = plex_get(f"/library/metadata/{key}?includeGuids=1")
+        meta = ((data.get("MediaContainer") or {}).get("Metadata") or [{}])[0]
+        _show_ids[key] = _guid_ids(meta)
+        if len(_show_ids) > 2000:
+            _show_ids.clear()
+    return _show_ids[key]
+
+
+def poll_plex() -> None:
+    last_error = 0.0
+    while True:
+        try:
+            data = plex_get("/library/recentlyAdded?includeGuids=1&X-Plex-Container-Start=0&X-Plex-Container-Size=80")
+            now = time.time()
+            available = []
+            for it in (data.get("MediaContainer") or {}).get("Metadata") or []:
+                added = float(it.get("addedAt") or 0)
+                if not added or now - added > AVAILABLE_WINDOW:
+                    continue
+                kind = it.get("type")
+                if kind == "movie":
+                    tmdb, tvdb = _guid_ids(it)
+                    if tmdb:
+                        available.append({"type": "movie", "tmdbId": tmdb, "tvdbId": None, "at": added, "episode": None})
+                elif kind in ("episode", "season", "show"):
+                    show_key = {"episode": it.get("grandparentRatingKey"), "season": it.get("parentRatingKey")}.get(
+                        kind, it.get("ratingKey"))
+                    tmdb, tvdb = _ids_of_show(show_key)
+                    if not (tmdb or tvdb):
+                        continue
+                    if kind == "episode":
+                        episode = (_int(it.get("parentIndex")), _int(it.get("index")))
+                    elif kind == "season":
+                        episode = (_int(it.get("index")), None)
+                    else:
+                        episode = None
+                    available.append({"type": "tv", "tmdbId": tmdb, "tvdbId": tvdb, "at": added, "episode": episode})
+            with STATE.lock:
+                if not STATE.plex_ok:
+                    log.info("Plex collegato")
+                STATE.plex_ok = True
+                STATE.plex_available = available
+                STATE.snapshot = None
+        except Exception as e:  # noqa: BLE001
+            with STATE.lock:
+                STATE.plex_ok = False
+            if time.time() - last_error > 300:
+                log.warning("Plex non raggiungibile (%s): %s", PLEX_URL, e)
+                last_error = time.time()
+        time.sleep(PLEX_SECONDS)
+
+
 _arr_errors: dict[str, float] = {}
 
 
@@ -328,6 +421,7 @@ def build_snapshot() -> dict:
             return STATE.snapshot
         torrents = STATE.torrents
         groups: dict[tuple, dict] = {}
+        finished: list[tuple[str, dict, dict]] = []
         for h, m in STATE.mapping.items():
             t = torrents.get(h)
             if not t:
@@ -335,7 +429,13 @@ def build_snapshot() -> dict:
             progress = min(max(float(t.get("progress") or 0), 0.0), 1.0)
             if progress >= 1:
                 if not m["inQueue"]:
-                    continue  # finito: lo racconta l'importazione
+                    # Finito e importato: conta nel totale del titolo solo se altri
+                    # suoi torrent stanno ancora scaricando (episodi di una stagione),
+                    # cosi' la percentuale non torna indietro quando uno finisce.
+                    done_at = float(t.get("completion_on") or 0)
+                    if done_at > 0 and now - done_at < DONE_WINDOW:
+                        finished.append((h, m, t))
+                    continue
                 state = "importing"
             else:
                 state = STATE_MAP.get(t.get("state", ""), "downloading")
@@ -361,6 +461,18 @@ def build_snapshot() -> dict:
             g["seasons"] |= m["seasons"]
             g["episodes"] |= m["episodes"]
 
+        for h, m, t in finished:
+            key = (m["type"], m["tmdbId"] or m["tvdbId"], m["is4k"])
+            g = groups.get(key)
+            if g is None:
+                continue
+            size = int(t.get("size") or t.get("total_size") or 0)
+            g["size"] += size
+            g["done"] += size
+            g["count"] += 1
+            g["seasons"] |= m["seasons"]
+            g["episodes"] |= m["episodes"]
+
         items = []
         for g in groups.values():
             state = min(g["states"], key=lambda s: STATE_PRIORITY.index(s) if s in STATE_PRIORITY else 99)
@@ -376,11 +488,37 @@ def build_snapshot() -> dict:
                 "seasons": sorted(g["seasons"]), "episodes": len(g["episodes"]),
             })
 
-        # Arrivati sul server da poco (importati da Radarr/Sonarr), se non c'e' altro in corso.
+        # Comparsi su Plex da poco: disponibili davvero (vince su tutto, tranne un
+        # download ancora in corso dello stesso titolo).
+        on_plex: dict[tuple, dict] = {}
+        for i in STATE.plex_available:
+            for is4k in ((False, True) if i["type"] == "movie" else (False,)):
+                key = (i["type"], i["tmdbId"] or i["tvdbId"], is4k)
+                if key in groups:
+                    continue
+                g = on_plex.setdefault(key, {
+                    "type": i["type"], "tmdbId": i["tmdbId"], "tvdbId": i["tvdbId"], "is4k": is4k,
+                    "at": i["at"], "episodes": set(), "seasons": set(),
+                })
+                g["at"] = max(g["at"], i["at"])
+                ep = i["episode"]
+                if ep and ep[0] is not None:
+                    g["seasons"].add(ep[0])
+                    if ep[1] is not None:
+                        g["episodes"].add(ep)
+        for g in on_plex.values():
+            items.append({
+                "type": g["type"], "tmdbId": g["tmdbId"], "tvdbId": g["tvdbId"], "is4k": g["is4k"],
+                "progress": 1, "size": 0, "left": 0, "speed": 0, "eta": None, "state": "available",
+                "availableAt": int(g["at"] * 1000), "seeds": 0, "peers": 0, "count": 0,
+                "seasons": sorted(g["seasons"]), "episodes": len(g["episodes"]),
+            })
+
+        # Importati da Radarr/Sonarr ma non ancora su Plex.
         imported: dict[tuple, dict] = {}
         for i in STATE.imports:
             key = (i["type"], i["tmdbId"] or i["tvdbId"], i["is4k"])
-            if key in groups:
+            if key in groups or key in on_plex:
                 continue
             g = imported.setdefault(key, {
                 "type": i["type"], "tmdbId": i["tmdbId"], "tvdbId": i["tvdbId"], "is4k": i["is4k"],
@@ -399,9 +537,10 @@ def build_snapshot() -> dict:
             })
 
         STATE.snapshot = {
-            "version": 2,
+            "version": 3,
             "at": int(now * 1000),
             "qbit": STATE.qbit_ok,
+            "plex": bool(PLEX_URL and PLEX_TOKEN and STATE.plex_ok),
             "items": items,
         }
         STATE.snapshot_at = now
@@ -467,6 +606,7 @@ class Handler(BaseHTTPRequestHandler):
             with STATE.lock:
                 self._send(200, {
                     "ok": STATE.qbit_ok,
+                    "plex": STATE.plex_ok if PLEX_URL else None,
                     "torrents": len(STATE.torrents),
                     "mapped": len(STATE.mapping),
                     "lastPoll": round(time.time() - STATE.last_poll, 1) if STATE.last_poll else None,
@@ -496,6 +636,10 @@ def main() -> None:
         log.warning("Nessun Radarr/Sonarr configurato: non so abbinare i torrent ai titoli")
     threading.Thread(target=poll_qbit, name="qbit", daemon=True).start()
     threading.Thread(target=poll_mapping, name="arr", daemon=True).start()
+    if PLEX_URL and PLEX_TOKEN:
+        threading.Thread(target=poll_plex, name="plex", daemon=True).start()
+    else:
+        log.warning("PLEX_URL/PLEX_TOKEN non impostati: 'disponibile' arrivera' solo da Seerr")
     log.info("MaggioFlix Live in ascolto sulla porta %d (%d Radarr/Sonarr)", PORT, len(ARRS))
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 

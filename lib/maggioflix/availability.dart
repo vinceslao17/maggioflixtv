@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../i18n/strings.g.dart';
 import '../maggioflix_config.dart';
 import '../models/seerr/seerr_session.dart';
+import '../providers/catalog_sources_provider.dart';
 import '../providers/seerr_account_provider.dart';
 import '../services/deep_links/deep_link_service.dart';
 import '../utils/app_logger.dart';
@@ -135,6 +136,8 @@ class MaggioflixAvailabilityController {
 
   final State _state;
   SeerrAccountProvider? _seerr;
+  CatalogSourcesProvider? _sources;
+  VoidCallback? _releaseLive;
   String? _configuredKey;
   bool _checking = false;
   bool _disposed = false;
@@ -143,24 +146,33 @@ class MaggioflixAvailabilityController {
     if (!MaggioflixAvailability.supported || !_state.mounted) return;
     _seerr = _state.context.read<SeerrAccountProvider?>();
     _seerr?.addListener(_onSeerrChanged);
+    _sources = _state.context.read<CatalogSourcesProvider?>();
+    _sources?.addListener(_onSourcesChanged);
     MaggioflixLive.instance.addListener(_onLive);
+    // Con l'app aperta il ponte si legge sempre: la notifica parte nel
+    // momento in cui il titolo compare su Plex, come nell'app di Plex.
+    _releaseLive = MaggioflixLive.instance.watch(_sources?.seerrSource);
     _onSeerrChanged();
   }
 
   void dispose() {
     _disposed = true;
     _seerr?.removeListener(_onSeerrChanged);
+    _sources?.removeListener(_onSourcesChanged);
     MaggioflixLive.instance.removeListener(_onLive);
+    _releaseLive?.call();
   }
 
-  /// Con l'app aperta: appena il ponte vede un titolo arrivato sul server,
+  void _onSourcesChanged() => MaggioflixLive.instance.updateSource(_sources?.seerrSource);
+
+  /// Con l'app aperta: appena il ponte vede un titolo arrivato su Plex,
   /// si controlla subito (la notifica parte senza aspettare Seerr).
-  int _lastImportedCount = 0;
+  Set<String> _lastArrivals = const {};
 
   void _onLive() {
-    final count = MaggioflixLive.instance.importedCount;
-    final grew = count > _lastImportedCount;
-    _lastImportedCount = count;
+    final arrivals = MaggioflixLive.instance.arrivals;
+    final grew = arrivals.any((a) => !_lastArrivals.contains(a));
+    _lastArrivals = arrivals;
     if (grew) unawaited(_check());
   }
 

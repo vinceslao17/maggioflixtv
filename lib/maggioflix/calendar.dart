@@ -486,12 +486,8 @@ class _MaggioflixCalendarViewState extends State<MaggioflixCalendarView> {
       );
     }
 
-    Widget chip(String label, _MfCalendarFilter value) => ChoiceChip(
-      label: Text(label),
-      selected: _filter == value,
-      showCheckmark: false,
-      onSelected: (_) => setState(() => _filter = value),
-    );
+    Widget chip(String label, _MfCalendarFilter value) =>
+        MfToggleChip(label: label, selected: _filter == value, onTap: () => setState(() => _filter = value));
 
     final children = <Widget>[
       Row(

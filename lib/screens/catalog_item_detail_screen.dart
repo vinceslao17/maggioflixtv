@@ -20,6 +20,7 @@ import '../media/ids.dart';
 import '../media/media_hub.dart';
 import '../media/media_item.dart';
 import '../media/media_item_merge.dart';
+import '../media/media_kind.dart';
 import '../media/media_rating.dart';
 import '../media/primary_trailer.dart';
 import '../models/catalog/catalog_cast_member.dart';
@@ -157,7 +158,8 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
     unawaited(_loadDetail());
     if (isTvosRunner) unawaited(_checkYouTubeApp());
     final sources = context.read<CatalogSourcesProvider>();
-    if (sources.seerrSource != null && widget.item.ids.tmdb != null) {
+    if (widget.item.ids.tmdb != null || widget.item.ids.tvdb != null) {
+      // Anche se Seerr si collega dopo: il ponte parte appena c'è la sessione.
       _mfReleaseLive = MaggioflixLive.instance.watch(sources.seerrSource);
       MaggioflixLive.instance.addListener(_onMfLive);
       _mfLivePresent = _mfLiveItem() != null;
@@ -178,18 +180,21 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
   MfLiveItem? _mfLiveItem() {
     final item = _item;
     final tmdbId = item.ids.tmdb;
-    if (tmdbId == null) return null;
-    return MaggioflixLive.instance.itemFor(item.kind, tmdbId: tmdbId) ??
-        MaggioflixLive.instance.itemFor(item.kind, tmdbId: tmdbId, is4k: true);
+    final tvdbId = item.ids.tvdb;
+    if (tmdbId == null && tvdbId == null) return null;
+    if (item.kind != MediaKind.movie) MaggioflixLive.instance.rememberIds(tmdbId, tvdbId);
+    return MaggioflixLive.instance.itemFor(item.kind, tmdbId: tmdbId, tvdbId: tvdbId) ??
+        MaggioflixLive.instance.itemFor(item.kind, tmdbId: tmdbId, tvdbId: tvdbId, is4k: true);
   }
 
   /// Compare o sparisce il download: la pillola cambia. Quando arriva sul
-  /// server, la scheda si ricarica ogni 30 s finché Seerr non lo segna disponibile.
+  /// server, la scheda si ricarica ogni 10 s finché non risulta disponibile.
   void _onMfLive() {
     if (!mounted) return;
+    MaggioflixLive.instance.updateSource(context.read<CatalogSourcesProvider>().seerrSource);
     final live = _mfLiveItem();
     final present = live != null;
-    final arrived = live?.isImported ?? false;
+    final arrived = (live?.isImported ?? false) || (live?.isOnPlex ?? false);
     final finished = _mfLivePresent && !present && MaggioflixLive.instance.reachable;
     if (present != _mfLivePresent || finished) {
       setState(() {
@@ -200,7 +205,8 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
     }
     if ((arrived || finished) && _mfReloadTimer == null) {
       var attempts = 0;
-      _mfReloadTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
+      if (live?.isOnPlex ?? false) unawaited(_loadDetail());
+      _mfReloadTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
         attempts++;
         await _loadDetail();
         if (!mounted) {
@@ -208,7 +214,7 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
           return;
         }
         final available = _item.serverState?.availability == CatalogAvailability.available;
-        if (available || attempts >= 20) {
+        if (available || attempts >= 60) {
           timer.cancel();
           setState(() => _mfFinishing = false);
         }
@@ -1605,13 +1611,61 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
                                                   builder: (context, state) => MaggioflixLiveStatusPill(
                                                     kind: item.kind,
                                                     tmdbId: tmdbId,
+                                                    tvdbId: item.ids.tvdb,
                                                     available: mfAvailable,
                                                     finishing: _mfFinishing,
                                                     focused: state.showFocus,
                                                   ),
+                                                ),
+                                              // MaggioFlix: una serie già richiesta o disponibile può
+                                              // comunque ricevere altre stagioni.
+                                              if (_requestSource case final SeerrCatalogSource seerr
+                                                  when tmdbId != null &&
+                                                      item.kind != MediaKind.movie &&
+                                                      (mfAvailable || mfRequested || _mfLivePresent || _mfFinishing))
+                                                FocusableAction(
+                                                  debugLabel: 'catalog_request_more',
+                                                  onPressed: () => unawaited(
+                                                    showSeerrRequestSheet(
+                                                      hostContext,
+                                                      source: seerr,
+                                                      kind: item.kind,
+                                                      tmdbId: tmdbId,
+                                                      title: item.title,
+                                                    ),
+                                                  ),
+                                                  builder: (context, state) => OutlinedButton.icon(
+                                                    onPressed: () => unawaited(
+                                                      showSeerrRequestSheet(
+                                                        hostContext,
+                                                        source: seerr,
+                                                        kind: item.kind,
+                                                        tmdbId: tmdbId,
+                                                        title: item.title,
+                                                      ),
+                                                    ),
+                                                    style: OutlinedButton.styleFrom(
+                                                      backgroundColor: state.showFocus
+                                                          ? theme.colorScheme.onSurface
+                                                          : null,
+                                                      foregroundColor: state.showFocus
+                                                          ? theme.colorScheme.surface
+                                                          : theme.colorScheme.onSurface,
+                                                      side: BorderSide(
+                                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                                                      ),
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: 18,
+                                                        vertical: 12,
+                                                      ),
+                                                    ),
+                                                    icon: const AppIcon(Symbols.playlist_add_rounded, fill: 1),
+                                                    label: Text(maggioflixMoreSeasonsLabel()),
+                                                  ),
                                                 )
                                               else if (_requestSource case final SeerrCatalogSource seerr
-                                                  when tmdbId != null)
+                                                  when tmdbId != null &&
+                                                      !(mfAvailable || mfRequested || _mfLivePresent || _mfFinishing))
                                                 FocusableAction(
                                                   debugLabel: 'catalog_request',
                                                   onPressed: () => unawaited(

@@ -37,7 +37,8 @@ class MfLiveItem {
   final int? eta;
 
   /// downloading, metadata, checking, queued, stalled, paused, error,
-  /// importing (scaricato, Radarr/Sonarr lo stanno spostando), imported (sul server)
+  /// importing (scaricato, Radarr/Sonarr lo stanno spostando), imported (sul
+  /// server, Plex non l'ha ancora aggiunto), available (già nell'app)
   final String state;
 
   /// Quando Radarr/Sonarr l'hanno importato (solo per [isImported]).
@@ -73,17 +74,34 @@ class MfLiveItem {
   bool get isImporting => state == 'importing';
   bool get isImported => state == 'imported';
 
-  /// Download ancora in corso (non ancora sul server).
-  bool get isActive => !isImported;
+  /// Già su Plex, quindi guardabile nell'app.
+  bool get isOnPlex => state == 'available';
 
-  /// Avanzamento stimato adesso, tra un aggiornamento e l'altro.
-  double progressAt(DateTime now) {
-    if (!isDownloading || speed <= 0 || size <= 0) return progress.clamp(0.0, 1.0).toDouble();
-    // Al massimo 3 s di stima: poi arriva il dato vero e non si torna indietro.
-    final elapsed = math.min(now.difference(receivedAt).inMilliseconds / 1000.0, 3.0);
-    final leftNow = math.max(left - speed * elapsed, size * 0.001);
-    return (1 - leftNow / size).clamp(0.0, 1.0).toDouble();
-  }
+  /// Download ancora in corso (non ancora sul server).
+  bool get isActive => !isImported && !isOnPlex;
+
+  MfLiveItem withProgress(double value) => MfLiveItem(
+    kind: kind,
+    tmdbId: tmdbId,
+    tvdbId: tvdbId,
+    is4k: is4k,
+    progress: value,
+    size: size,
+    left: left,
+    speed: speed,
+    eta: eta,
+    state: state,
+    seeds: seeds,
+    peers: peers,
+    count: count,
+    seasons: seasons,
+    episodes: episodes,
+    receivedAt: receivedAt,
+    importedAt: importedAt,
+  );
+
+  /// Avanzamento: il dato di qBittorrent, senza stime (arriva ogni secondo).
+  double progressAt(DateTime now) => progress.clamp(0.0, 1.0).toDouble();
 
   Duration? remainingAt(DateTime now) {
     final e = eta;
@@ -101,8 +119,9 @@ class MfLiveItem {
     'stalled' => _tr('In cerca di fonti', 'Looking for peers'),
     'paused' => _tr('In pausa', 'Paused'),
     'error' => _tr('Errore del download', 'Download error'),
-    'importing' => _tr('Scaricato, in importazione', 'Downloaded, importing'),
-    'imported' => _tr('Sul server, in arrivo su Plex', 'On the server, coming to Plex'),
+    'importing' => _tr('Importazione', 'Importing'),
+    'imported' => _tr('Importazione', 'Importing'),
+    'available' => _tr('Disponibile', 'Available'),
     _ => '',
   };
 
@@ -145,6 +164,10 @@ class MaggioflixLive extends ChangeNotifier with WidgetsBindingObserver {
   final http.Client _http = http.Client();
   final Map<String, MfLiveItem> _byTmdb = {};
   final Map<String, MfLiveItem> _byTvdb = {};
+
+  /// TMDB -> TVDB delle serie: Sonarr conosce le serie per TVDB, l'app spesso
+  /// solo per TMDB (ricerca, poster). Si impara da Seerr e dal ponte.
+  final Map<int, int> _tvdbOf = {};
   SeerrCatalogSource? _source;
   Timer? _timer;
   int _watchers = 0;
@@ -153,13 +176,27 @@ class MaggioflixLive extends ChangeNotifier with WidgetsBindingObserver {
   bool _foreground = true;
   DateTime? _lastSuccess;
 
+  /// Ultima percentuale mostrata per titolo: piccoli passi indietro (un
+  /// torrent rifatto, un arrotondamento) non si vedono.
+  final Map<String, double> _shown = {};
+
   /// Il ponte ha risposto all'ultima lettura.
   bool reachable = false;
 
   bool get enabled => maggioflixLiveUrl.isNotEmpty;
 
-  /// Quanti titoli risultano appena arrivati sul server.
-  int get importedCount => _byTmdb.values.where((i) => i.isImported).length;
+  /// Quanti titoli risultano appena arrivati sul server o su Plex.
+  int get importedCount => {..._byTmdb.values, ..._byTvdb.values}.where((i) => !i.isActive).length;
+
+  /// Il ponte legge Plex: "disponibile" arriva da lì, non da Seerr.
+  bool plexConnected = false;
+
+  /// Titoli appena comparsi nell'app (su Plex o, senza Plex, sul server).
+  Set<String> get arrivals => {
+    for (final i in {..._byTmdb.values, ..._byTvdb.values})
+      if (i.isOnPlex || (!plexConnected && i.isImported))
+        '${i.kind.name}:${i.tmdbId ?? 'tvdb${i.tvdbId}'}:${i.is4k}:${i.state}',
+  };
 
   /// Accende gli aggiornamenti; vanno avanti finché non si chiama la funzione
   /// restituita (una per ogni pagina che li mostra).
@@ -184,12 +221,18 @@ class MaggioflixLive extends ChangeNotifier with WidgetsBindingObserver {
     };
   }
 
+  /// Collega TMDB e TVDB di una serie, così la si ritrova anche se il ponte ne conosce solo uno.
+  void rememberIds(int? tmdbId, int? tvdbId) {
+    if (tmdbId != null && tmdbId > 0 && tvdbId != null && tvdbId > 0) _tvdbOf[tmdbId] = tvdbId;
+  }
+
   MfLiveItem? itemFor(MediaKind kind, {int? tmdbId, int? tvdbId, bool is4k = false}) {
     final type = kind == MediaKind.movie ? 'movie' : 'tv';
     if (tmdbId != null) {
       final item = _byTmdb['$type:$tmdbId:$is4k'];
       if (item != null) return item;
     }
+    if (kind != MediaKind.movie) tvdbId ??= tmdbId == null ? null : _tvdbOf[tmdbId];
     if (tvdbId != null) return _byTvdb['$type:$tvdbId:$is4k'];
     return null;
   }
@@ -231,23 +274,35 @@ class MaggioflixLive extends ChangeNotifier with WidgetsBindingObserver {
       if (resp.statusCode != 200) throw StateError('HTTP ${resp.statusCode}');
       final decoded = jsonDecode(resp.body);
       final items = decoded is Map ? decoded['items'] : null;
+      plexConnected = decoded is Map && decoded['plex'] == true;
       final now = DateTime.now();
       _byTmdb.clear();
       _byTvdb.clear();
+      final shown = <String, double>{};
       if (items is List) {
         for (final raw in items) {
-          final item = MfLiveItem.fromJson(raw, now);
+          var item = MfLiveItem.fromJson(raw, now);
           if (item == null) continue;
           final type = item.kind == MediaKind.movie ? 'movie' : 'tv';
+          final key = '$type:${item.tmdbId ?? 'tvdb${item.tvdbId}'}:${item.is4k}';
+          final before = _shown[key];
+          if (item.isActive && before != null && item.progress < before && before - item.progress < 0.05) {
+            item = item.withProgress(before);
+          }
+          if (item.isActive) shown[key] = item.progress;
+          if (item.kind != MediaKind.movie) rememberIds(item.tmdbId, item.tvdbId);
           if (item.tmdbId != null) _byTmdb['$type:${item.tmdbId}:${item.is4k}'] = item;
           if (item.tvdbId != null) _byTvdb['$type:${item.tvdbId}:${item.is4k}'] = item;
         }
       }
+      _shown
+        ..clear()
+        ..addAll(shown);
       if (!reachable) appLogger.i('MaggioFlix Live collegato');
       reachable = true;
       _failures = 0;
       _lastSuccess = now;
-      next = _byTmdb.isEmpty && _byTvdb.isEmpty ? const Duration(seconds: 4) : const Duration(milliseconds: 1500);
+      next = _byTmdb.isEmpty && _byTvdb.isEmpty ? const Duration(seconds: 3) : const Duration(seconds: 1);
       notifyListeners();
     } catch (e) {
       _failures++;

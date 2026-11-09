@@ -17,6 +17,9 @@ services:
       SONARR_URL: "http://sonarr:8989"
       SONARR_KEY: ""
       SEERR_URL: "http://seerr:5055"
+      # Plex: serve per sapere quando un titolo e' davvero nell'app.
+      PLEX_URL: "http://192.168.1.65:32400"
+      PLEX_TOKEN: ""
     networks:
       - maggio_default
 

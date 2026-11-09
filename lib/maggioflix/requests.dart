@@ -154,6 +154,7 @@ class MfRequest {
         json['media'] is Map<String, dynamic> ? json['media'] as Map<String, dynamic> : const <String, dynamic>{};
     final type = (json['type'] as String?) ?? (media['mediaType'] as String?) ?? 'movie';
     final rawDownloads = media[is4k ? 'downloadStatus4k' : 'downloadStatus'];
+    if (type == 'tv') MaggioflixLive.instance.rememberIds(_int(media['tmdbId']), _int(media['tvdbId']));
     return MfRequest(
       id: _int(json['id']) ?? 0,
       status: _int(json['status']) ?? 1,
@@ -201,8 +202,11 @@ class MfRequest {
   /// Arrivato sul server (importato da Radarr/Sonarr), Plex lo sta aggiungendo.
   bool get isImported => live?.isImported ?? false;
 
+  /// Si può guardare: Seerr lo dà disponibile o il server dice che è già su Plex.
+  bool get isWatchable => isAvailable || (live?.isOnPlex ?? false);
+
   /// Richiesta ancora aperta: in attesa, approvata o in download.
-  bool get isInProgress => !isAvailable && (status == 1 || status == 2 || downloads.isNotEmpty);
+  bool get isInProgress => !isWatchable && (status == 1 || status == 2 || downloads.isNotEmpty);
 
   /// Comando "Guarda": apre e avvia il titolo sul server.
   String? get playLink =>
@@ -231,6 +235,8 @@ Future<MfQuota?> _loadQuota(SeerrCatalogSource source) async {
 /// Etichette del sottomenu Request e dello stato nella scheda titolo.
 String maggioflixBrowseLabel() => _tr('Sfoglia', 'Browse');
 String maggioflixAvailableLabel() => _tr('Disponibile', 'Available');
+
+String maggioflixMoreSeasonsLabel() => _tr('Altre stagioni', 'More seasons');
 String maggioflixRequestedLabel() => _tr('Richiesto', 'Requested');
 
 /// Etichetta del pulsante che apre "Le mie richieste".
@@ -863,8 +869,11 @@ _StatusInfo _statusOf(MfRequest r, ThemeData theme) {
       return _StatusInfo(_tr('Non riuscita', 'Failed'), Symbols.error_rounded, theme.colorScheme.error);
   }
   final live = r.live;
+  if (live != null && live.isOnPlex) {
+    return _StatusInfo(_tr('Disponibile', 'Available'), Symbols.check_circle_rounded, Colors.green);
+  }
   if (live != null && live.isImported) {
-    return _StatusInfo(live.stateLabel, Symbols.check_circle_rounded, Colors.lightGreen);
+    return _StatusInfo(_tr('Importazione', 'Importing'), Symbols.move_to_inbox_rounded, Colors.lightBlueAccent);
   }
   if (live != null) {
     return _StatusInfo(
@@ -1313,12 +1322,8 @@ class _MaggioflixRequestsTabState extends State<MaggioflixRequestsTab> {
     final muted = theme.colorScheme.onSurface.withValues(alpha: 0.65);
     final showRequester = _scope == MfRequestsScope.all;
 
-    Widget chip(String label, MfRequestsScope value) => ChoiceChip(
-      label: Text(label),
-      selected: _scope == value,
-      showCheckmark: false,
-      onSelected: (_) => _select(value),
-    );
+    Widget chip(String label, MfRequestsScope value) =>
+        MfToggleChip(label: label, selected: _scope == value, onTap: () => _select(value));
 
     final children = <Widget>[
       const MaggioflixQuotaBanner(style: MfQuotaStyle.card),
@@ -1412,11 +1417,12 @@ _MfPhoneStatus _phoneStatusOf(MfRequest r, CatalogItem? item, ThemeData theme) {
   if (r.status == 4) return _MfPhoneStatus(_tr('Non riuscita', 'Failed'), theme.colorScheme.error);
   if (r.isAvailable) return _MfPhoneStatus(_tr('Disponibile', 'Available'), mfGreen);
   final live = r.live;
+  if (live != null && live.isOnPlex) return _MfPhoneStatus(_tr('Disponibile', 'Available'), mfGreen);
   if (live != null && live.isImported) {
     return _MfPhoneStatus(
-      _tr('Sul server', 'On the server'),
-      mfGreen,
-      _tr('In arrivo su Plex a momenti', 'Coming to Plex any moment'),
+      _tr('Importazione', 'Importing'),
+      mfCyan,
+      _tr('Quasi pronto: arriva nell\'app a momenti', 'Almost ready: in the app any moment'),
     );
   }
   if (live != null) {
@@ -1564,7 +1570,7 @@ class _MfRequestCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (request.isAvailable && playLink != null) ...[
+                  if (request.isWatchable && playLink != null) ...[
                     const SizedBox(width: 8),
                     FilledButton.icon(
                       onPressed: () => DeepLinkService.instance.receive(playLink),
@@ -1597,6 +1603,7 @@ class _MfRequestCard extends StatelessWidget {
 class MaggioflixLiveStatusPill extends StatefulWidget {
   final MediaKind kind;
   final int? tmdbId;
+  final int? tvdbId;
   final bool available;
 
   /// Download appena finito: in arrivo sul server.
@@ -1609,6 +1616,7 @@ class MaggioflixLiveStatusPill extends StatefulWidget {
     super.key,
     required this.kind,
     required this.tmdbId,
+    this.tvdbId,
     required this.available,
     this.finishing = false,
     this.focused = false,
@@ -1643,10 +1651,10 @@ class _MaggioflixLiveStatusPillState extends State<MaggioflixLiveStatusPill> {
   }
 
   MfLiveItem? get _live {
-    final tmdbId = widget.tmdbId;
-    if (widget.available || tmdbId == null) return null;
-    return MaggioflixLive.instance.itemFor(widget.kind, tmdbId: tmdbId) ??
-        MaggioflixLive.instance.itemFor(widget.kind, tmdbId: tmdbId, is4k: true);
+    if (widget.available) return null;
+    final live = MaggioflixLive.instance;
+    return live.itemFor(widget.kind, tmdbId: widget.tmdbId, tvdbId: widget.tvdbId) ??
+        live.itemFor(widget.kind, tmdbId: widget.tmdbId, tvdbId: widget.tvdbId, is4k: true);
   }
 
   @override
@@ -1662,15 +1670,15 @@ class _MaggioflixLiveStatusPillState extends State<MaggioflixLiveStatusPill> {
     String? subtitle;
     double? fill;
 
-    if (widget.available) {
+    if (widget.available || (live?.isOnPlex ?? false)) {
       accent = Colors.green;
       icon = Symbols.check_circle_rounded;
       title = maggioflixAvailableLabel();
     } else if (live != null && live.isImported) {
-      accent = Colors.green;
-      icon = Symbols.check_circle_rounded;
-      title = _tr('Sul server', 'On the server');
-      subtitle = _tr('In arrivo su Plex a momenti', 'Coming to Plex any moment');
+      accent = const Color(0xFF4FC3F7);
+      icon = Symbols.move_to_inbox_rounded;
+      title = _tr('Importazione', 'Importing');
+      subtitle = _tr('Quasi pronto: arriva nell\'app a momenti', 'Almost ready: in the app any moment');
       fill = 1.0;
     } else if (live != null) {
       accent = const Color(0xFF4FC3F7);
@@ -1696,8 +1704,8 @@ class _MaggioflixLiveStatusPillState extends State<MaggioflixLiveStatusPill> {
           if (live.episodes > 1) _tr('${live.episodes} episodi', '${live.episodes} episodes'),
         ].join(' · ');
       } else if (live.isImporting) {
-        title = _tr('Scaricato', 'Downloaded');
-        subtitle = _tr('In importazione sul server', 'Importing to the server');
+        title = _tr('Importazione', 'Importing');
+        subtitle = _tr('Scaricato, lo sto spostando sul server', 'Downloaded, moving it to the server');
       } else {
         title = '${live.stateLabel} · $pct';
         subtitle = live.state == 'stalled'
@@ -1706,10 +1714,10 @@ class _MaggioflixLiveStatusPillState extends State<MaggioflixLiveStatusPill> {
       }
       if (subtitle != null && subtitle.isEmpty) subtitle = null;
     } else if (widget.finishing) {
-      accent = Colors.green;
-      icon = Symbols.check_circle_rounded;
-      title = _tr('Scaricato', 'Downloaded');
-      subtitle = _tr('Arriva sul server tra poco', 'Reaching the server soon');
+      accent = const Color(0xFF4FC3F7);
+      icon = Symbols.move_to_inbox_rounded;
+      title = _tr('Importazione', 'Importing');
+      subtitle = _tr('Quasi pronto: arriva nell\'app a momenti', 'Almost ready: in the app any moment');
       fill = 1.0;
     } else {
       accent = Colors.lightBlueAccent;
@@ -1795,6 +1803,44 @@ class _MaggioflixLiveStatusPillState extends State<MaggioflixLiveStatusPill> {
                 ),
               ExcludeSemantics(child: content),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Filtro a pillola: quello scelto è pieno (chiaro su scuro), gli altri solo bordati.
+class MfToggleChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const MfToggleChip({super.key, required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: Material(
+        color: selected ? scheme.onSurface : Colors.transparent,
+        shape: StadiumBorder(side: BorderSide(color: selected ? scheme.onSurface : scheme.outlineVariant)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+            child: Text(
+              label,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: selected ? scheme.surface : scheme.onSurface.withValues(alpha: 0.85),
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
           ),
         ),
       ),

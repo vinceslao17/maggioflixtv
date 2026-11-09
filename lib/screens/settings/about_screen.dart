@@ -14,6 +14,10 @@ class AboutScreen extends StatelessWidget {
 
   static final Future<PackageInfo> _packageInfoFuture = PackageInfo.fromPlatform();
 
+  /// MaggioFlix: numero della build di GitHub Actions (uguale al nome della release).
+  static const _maggioflixBuild = String.fromEnvironment('MAGGIOFLIX_BUILD');
+  static const _gitCommit = String.fromEnvironment('GIT_COMMIT');
+
   @override
   Widget build(BuildContext context) {
     final appName = t.app.title;
@@ -21,7 +25,14 @@ class AboutScreen extends StatelessWidget {
     return FutureBuilder<PackageInfo>(
       future: _packageInfoFuture,
       builder: (context, snapshot) {
-        final appVersion = snapshot.data?.version ?? '';
+        final baseVersion = snapshot.data?.version ?? '';
+        final appVersion = _maggioflixBuild.isEmpty ? baseVersion : '$baseVersion · build $_maggioflixBuild';
+        final release = _maggioflixBuild.isEmpty || baseVersion.isEmpty
+            ? null
+            : [
+                'GitHub maggioflix-v$baseVersion-$_maggioflixBuild',
+                if (_gitCommit.length >= 7) _gitCommit.substring(0, 7),
+              ].join(' · ');
         return FocusedScrollScaffold(
           title: Text(t.about.title),
           slivers: [
@@ -33,7 +44,7 @@ class AboutScreen extends StatelessWidget {
                     child: Column(
                       children: [
                         const SizedBox(height: 24),
-                        Image.asset('assets/plezy.png', width: 80, height: 80),
+                        Image.asset('assets/maggioflix_m.png', width: 80, height: 80),
                         const SizedBox(height: 16),
                         Text(appName, style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: .bold)),
                         const SizedBox(height: 8),
@@ -41,6 +52,13 @@ class AboutScreen extends StatelessWidget {
                           t.about.versionLabel(version: appVersion),
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens(context).textMuted),
                         ),
+                        if (release != null) ...[
+                          const SizedBox(height: 4),
+                          SelectableText(
+                            release,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens(context).textMuted),
+                          ),
+                        ],
                         const SizedBox(height: 24),
                         Text(
                           t.about.appDescription,

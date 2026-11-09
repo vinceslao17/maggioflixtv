@@ -1466,28 +1466,36 @@ class _CatalogBadges extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tmdbId = item?.ids.tmdb;
-    if (tmdbId == null) return _buildBadges(context, labels);
+    final tvdbId = item?.ids.tvdb;
+    if (tmdbId == null && tvdbId == null) return _buildBadges(context, labels);
     return ListenableBuilder(
       listenable: MaggioflixLive.instance,
       builder: (context, _) {
         final kind = item!.kind;
-        final live = MaggioflixLive.instance.itemFor(kind, tmdbId: tmdbId) ??
-            MaggioflixLive.instance.itemFor(kind, tmdbId: tmdbId, is4k: true);
+        final live = MaggioflixLive.instance.itemFor(kind, tmdbId: tmdbId, tvdbId: tvdbId) ??
+            MaggioflixLive.instance.itemFor(kind, tmdbId: tmdbId, tvdbId: tvdbId, is4k: true);
         if (live == null) return _buildBadges(context, labels);
         // MaggioFlix: avanzamento dal vivo al posto dell'etichetta della richiesta.
         final requestLabel = _catalogRequestBadge(item!.serverState);
         if (item!.serverState?.availability == CatalogAvailability.available) return _buildBadges(context, labels);
         final it = LocaleSettings.currentLocale.languageCode == 'it';
-        final liveLabel = live.isImported
-            ? (it ? 'Sul server' : 'On the server')
+        final availabilityLabel = item!.serverState == null ? null : _catalogAvailabilityBadge(item!.serverState!);
+        final done = live.isOnPlex;
+        final liveLabel = live.isOnPlex
+            ? (it ? 'Disponibile' : 'Available')
+            : live.isImported
+            ? 'Import…'
             : live.isDownloading
             ? '${(live.progressAt(DateTime.now()) * 100).floor()}%'
             : (live.isImporting ? 'Import…' : '${(live.progress * 100).floor()}% · ${live.stateLabel}');
         return _buildBadges(
           context,
-          [liveLabel, ...labels.where((l) => l != requestLabel)],
+          [
+            liveLabel,
+            ...labels.where((l) => l != requestLabel && l != liveLabel && !(live.isOnPlex && l == availabilityLabel)),
+          ],
           liveLabel: liveLabel,
-          liveImported: live.isImported,
+          liveImported: done,
         );
       },
     );

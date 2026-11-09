@@ -29,6 +29,7 @@ tempo che manca dei download, aggiornati ogni secondo.
 | `RADARR4K_URL`, `RADARR4K_KEY` | | facoltativo |
 | `SONARR_URL`, `SONARR_KEY` | `http://sonarr:8989` | |
 | `SEERR_URL` | `http://seerr:5055` | per verificare le sessioni dell'app |
+| `PLEX_URL`, `PLEX_TOKEN` | `http://192.168.1.65:32400` | per sapere quando un titolo compare su Plex |
 | `PORT` | `8790` | porta interna |
 
 Pubblicazione: nel tunnel Cloudflare un public hostname `live.maggioflix.com` →

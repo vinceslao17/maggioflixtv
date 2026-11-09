@@ -64,7 +64,7 @@ object MaggioflixAvailability {
   private const val WORK_SOON = "maggioflix_availability_soon"
 
   // Mentre qualcosa scarica (o subito dopo una richiesta) si controlla ogni 2 minuti.
-  private const val FAST_DELAY_MINUTES = 2L
+  private const val FAST_DELAY_MINUTES = 1L
   private const val FAST_AFTER_REQUEST_MS = 3 * 60 * 60 * 1000L
   private const val NOTIFICATION_CHANNEL = "maggioflix_available"
   private const val NOTIFICATION_TAG = "maggioflix_available"
@@ -165,17 +165,22 @@ object MaggioflixAvailability {
 
     // Ponte MaggioFlix Live: sa subito cosa sta scaricando e cosa è appena
     // arrivato sul server, senza aspettare Seerr.
+    // Con Plex collegato al ponte, "disponibile" vuol dire già nell'app.
     val liveImported = HashSet<String>()
     val liveActive = HashSet<String>()
     val liveUrl = p.getString(KEY_LIVE, null)
     if (!liveUrl.isNullOrEmpty()) {
       httpGet("$liveUrl/api/live", cookie = null, extraHeaders = mapOf("X-Seerr-Session" to cookie))?.let { raw ->
-        runCatching { JSONObject(raw).optJSONArray("items") }.getOrNull()?.let { items ->
+        val snapshot = runCatching { JSONObject(raw) }.getOrNull()
+        val plex = snapshot?.optBoolean("plex", false) ?: false
+        snapshot?.optJSONArray("items")?.let { items ->
           for (i in 0 until items.length()) {
             val item = items.optJSONObject(i) ?: continue
             val type = item.optString("type")
             val is4k = item.optBoolean("is4k", false)
-            val target = if (item.optString("state") == "imported") liveImported else liveActive
+            val itemState = item.optString("state")
+            val arrived = itemState == "available" || (!plex && itemState == "imported")
+            val target = if (arrived) liveImported else liveActive
             item.optInt("tmdbId", 0).takeIf { it > 0 }?.let { target.add("$type:tmdb:$it:$is4k") }
             item.optInt("tvdbId", 0).takeIf { it > 0 }?.let { target.add("$type:tvdb:$it:$is4k") }
           }
