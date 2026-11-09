@@ -35,6 +35,7 @@ import '../widgets/backend_badge.dart';
 import '../i18n/strings.g.dart';
 import '../maggioflix_config.dart';
 import '../maggioflix/requests.dart';
+import '../maggioflix/branding.dart';
 
 enum _LibraryNavSection { visible, hidden }
 
@@ -851,6 +852,36 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
   }
 
   /// Calculate top padding for macOS traffic lights
+  /// MaggioFlix: the red M above the destinations, centred on the item icons whether the rail is
+  /// collapsed or open. It fades out on Home, whose toolbar already shows the full wordmark; the
+  /// slot keeps its height so the items never jump when switching tabs.
+  Widget _buildMaggioflixMark({required bool isCollapsed, required double collapsedWidth}) {
+    final size = PlatformDetector.isTV() ? 30.0 : 34.0;
+    // Open rail: rail padding + item padding + half the 22px icon.
+    const expandedIconCentre = _horizontalPadding + 17 + 11;
+    final centre = isCollapsed ? collapsedWidth / 2 : expandedIconCentre;
+    return SizedBox(
+      width: double.infinity,
+      height: size + 8,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedPositioned(
+            duration: expandDuration,
+            curve: expandCurve,
+            left: centre - size / 2,
+            top: 0,
+            child: AnimatedOpacity(
+              opacity: widget.selectedTab == NavigationTabId.discover ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 200),
+              child: ExcludeSemantics(child: MaggioflixMark(size: size)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   double _getTopPadding(BuildContext context) {
     double basePadding = MediaQuery.paddingOf(context).top + 16;
 
@@ -1013,6 +1044,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
                         child: Column(
                           children: [
                             SizedBox(height: _getTopPadding(context)),
+                            _buildMaggioflixMark(isCollapsed: isCollapsed, collapsedWidth: effectiveCollapsedWidth),
                             Expanded(
                               child: AnimatedPadding(
                                 padding: .symmetric(horizontal: horizontalPadding),

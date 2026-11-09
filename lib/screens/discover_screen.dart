@@ -57,6 +57,7 @@ import '../utils/snackbar_helper.dart';
 import '../utils/video_player_navigation.dart';
 import '../utils/layout_constants.dart';
 import '../utils/platform_detector.dart';
+import '../maggioflix/branding.dart';
 import '../utils/tone_mapped_logo_image.dart';
 import '../theme/mono_tokens.dart';
 import 'libraries/content_state_builder.dart';
@@ -802,12 +803,29 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     return ToolbarScrim(
       child: Row(
         children: [
-          if (!PlatformDetector.isTV())
-            Text(
-              t.discover.title,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(color: foregroundColor, fontWeight: .bold),
+          // MaggioFlix: the neon wordmark takes the place of the "Home" title. On TV the toolbar spans
+          // the full screen under the transparent rail, so the logo starts where the content starts.
+          Expanded(
+            child: Builder(
+              builder: (context) {
+                final isTV = PlatformDetector.isTV();
+                final start = isTV ? (MainScreenFocusScope.foregroundLeftOf(context) + 8).clamp(0.0, 400.0) : 0.0;
+                return AnimatedPadding(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeInOutCubicEmphasized,
+                  padding: EdgeInsetsDirectional.only(start: start),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: AlignmentDirectional.centerStart,
+                      child: MaggioflixWordmark(letterHeight: isTV ? 26 : 22),
+                    ),
+                  ),
+                );
+              },
             ),
-          const Spacer(),
+          ),
           // TV only: a fullscreen leanback app hides the system clock, while a
           // phone status bar and a desktop menu bar already show one.
           if (PlatformDetector.isTV()) ...[

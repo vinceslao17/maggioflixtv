@@ -164,6 +164,9 @@ flutter:
     # MaggioFlix: startup screen artwork (portrait on phones, landscape on TV/desktop).
     - assets/maggioflix_splash_portrait.jpg
     - assets/maggioflix_splash_landscape.jpg
+    # MaggioFlix: neon wordmark (Home toolbar) and red M (top of the side menu).
+    - assets/maggioflix_logo.png
+    - assets/maggioflix_m.png
     - assets/plezy_adaptive_foreground.svg
     - assets/plex_chevron.svg
     - assets/jellyfin_icon.svg
