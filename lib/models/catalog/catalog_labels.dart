@@ -115,7 +115,8 @@ String requestStateLabel(CatalogRequestState request, {required bool is4k}) {
   return switch (request) {
     CatalogRequestState.pending => t.explore.badge.pendingApproval,
     CatalogRequestState.approved => t.explore.badge.requested,
-    CatalogRequestState.processing => t.explore.badge.processing,
+    CatalogRequestState.processing =>
+      LocaleSettings.currentLocale.languageCode == 'it' ? 'In download' : t.explore.badge.processing,
     CatalogRequestState.declined => t.explore.badge.declined,
     CatalogRequestState.failed => t.explore.badge.requestFailed,
   };

@@ -113,6 +113,8 @@ class SeerrMedia {
   factory SeerrMedia.fromJson(Map<String, dynamic> json) => _$SeerrMediaFromJson(json);
 }
 
+int _listLength(Object? value) => value is List ? value.length : 0;
+
 /// Seerr's knowledge of a title on the linked media server: availability
 /// status plus any open requests. Absent entirely for titles Seerr has
 /// never seen.
@@ -137,6 +139,13 @@ class SeerrMediaInfo {
   /// seasons in the request sheet).
   final List<SeerrRequest>? requests;
 
+  /// MaggioFlix: how many downloads Radarr/Sonarr have running for this title
+  /// (`downloadStatus`), so "processing" can tell downloading from waiting.
+  @JsonKey(name: 'downloadStatus', fromJson: _listLength)
+  final int downloading;
+  @JsonKey(name: 'downloadStatus4k', fromJson: _listLength)
+  final int downloading4k;
+
   const SeerrMediaInfo({
     this.id,
     this.tmdbId,
@@ -145,6 +154,8 @@ class SeerrMediaInfo {
     this.status4kCode,
     this.seasons,
     this.requests,
+    this.downloading = 0,
+    this.downloading4k = 0,
   });
 
   SeerrMediaStatus status(SeerrProduct product) => SeerrMediaStatus.resolve(statusCode, product);

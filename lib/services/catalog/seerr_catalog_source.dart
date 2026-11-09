@@ -330,7 +330,12 @@ class SeerrCatalogSource implements CatalogSource, CatalogCommunityRatings {
     // request backing that status it is stale, so the failed request wins and
     // re-requesting stays open; any live request keeps the pipeline outcome.
     if (failed && !approved) return CatalogRequestState.failed;
-    if (mediaStatus == SeerrMediaStatus.processing) return CatalogRequestState.processing;
+    // MaggioFlix: come su Seerr, "processing" senza download in corso è solo
+    // "richiesto" (Radarr/Sonarr hanno cercato ma non trovato ancora nulla).
+    if (mediaStatus == SeerrMediaStatus.processing) {
+      final downloading = is4k ? info.downloading4k : info.downloading;
+      return downloading > 0 ? CatalogRequestState.processing : CatalogRequestState.approved;
+    }
     if (approved || mediaStatus == SeerrMediaStatus.pending) return CatalogRequestState.approved;
     if (declined) return CatalogRequestState.declined;
     return null;

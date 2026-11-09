@@ -447,7 +447,7 @@ class _SeerrRequestSheetState extends State<SeerrRequestSheet> {
       // Processing/Pending with no live request backing it is a stale
       // pipeline status left behind by a failed arr push — re-requestable.
       SeerrMediaStatus.processing || SeerrMediaStatus.pending when coveredByFailed && !coveredByRequest => null,
-      SeerrMediaStatus.processing => t.seerr.statusProcessing,
+      SeerrMediaStatus.processing => t.seerr.statusRequested,
       SeerrMediaStatus.pending => t.seerr.statusRequested,
       // Blocklisted titles cannot be requested at all; deleted ones may be
       // re-requested, so they fall through like unknown.

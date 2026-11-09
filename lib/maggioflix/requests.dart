@@ -822,9 +822,9 @@ _StatusInfo _statusOf(MfRequest r, ThemeData theme) {
       Symbols.check_circle_rounded,
       Colors.lightGreen,
     ),
-    3 => _StatusInfo(_tr('In elaborazione', 'Processing'), Symbols.sync_rounded, Colors.lightBlueAccent),
     7 => _StatusInfo(_tr('Eliminata', 'Deleted'), Symbols.delete_rounded, Colors.grey),
-    _ => _StatusInfo(_tr('Approvata', 'Approved'), Symbols.thumb_up_rounded, Colors.lightBlueAccent),
+    // Come su Seerr: approvata ma senza download in corso = "Richiesto".
+    _ => _StatusInfo(_tr('Richiesto', 'Requested'), Symbols.schedule_rounded, Colors.amber),
   };
 }
 
@@ -1315,16 +1315,20 @@ _MfPhoneStatus _phoneStatusOf(MfRequest r, CatalogItem? item, ThemeData theme) {
     );
   }
   if (r.status == 1) return _MfPhoneStatus(_tr('In attesa di approvazione', 'Waiting for approval'), mfAmber);
+  // Come su Seerr: approvata ma senza download in corso = "Richiesto".
   final release = item?.releaseDate;
   if (release != null && release.isAfter(DateTime.now())) {
     return _MfPhoneStatus(
-      _tr("In attesa dell'uscita", 'Waiting for release'),
+      _tr('Richiesto', 'Requested'),
       mfAmber,
       _tr('Esce il ${DateFormat.yMMMMd(locale).format(release)}', 'Out ${DateFormat.yMMMMd(locale).format(release)}'),
     );
   }
-  if (r.mediaStatus == 3) return _MfPhoneStatus(_tr('In elaborazione', 'Processing'), mfCyan);
-  return _MfPhoneStatus(_tr('Approvata, cerco una copia', 'Approved, looking for a copy'), mfAmber);
+  return _MfPhoneStatus(
+    _tr('Richiesto', 'Requested'),
+    mfAmber,
+    _tr('Si scarica appena si trova una copia', 'Downloads as soon as a copy is found'),
+  );
 }
 
 class _MfRequestCard extends StatelessWidget {

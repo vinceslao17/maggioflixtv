@@ -44,6 +44,8 @@ SeerrMediaInfo _$SeerrMediaInfoFromJson(Map<String, dynamic> json) =>
       requests: (json['requests'] as List<dynamic>?)
           ?.map((e) => SeerrRequest.fromJson(e as Map<String, dynamic>))
           .toList(),
+      downloading: _listLength(json['downloadStatus']),
+      downloading4k: _listLength(json['downloadStatus4k']),
     );
 
 SeerrSeasonInfo _$SeerrSeasonInfoFromJson(Map<String, dynamic> json) =>
