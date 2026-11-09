@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Directory, Platform, ProcessInfo;
-import 'dart:ui' show AppExitResponse;
+import 'dart:ui' show AppExitResponse, ImageFilter;
 import 'package:flutter/foundation.dart';
 // ignore: depend_on_referenced_packages
 import 'package:shared_preferences_foundation/shared_preferences_foundation.dart';
@@ -2514,62 +2514,120 @@ class _SetupScreenState extends State<SetupScreen> with MountedSetStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    const coralColor = Color(0xFFE5A00D);
-    final height = MediaQuery.sizeOf(context).height;
-    // The stacked layout below hangs its two rows off fixed ±170/180 offsets from the middle, which
-    // needs roughly 700 logical pixels of height. A car at a large interface scale — and a phone in
-    // landscape — has less than that, and the rows would collide or fall outside the Stack's clip.
-    if (height < 700) {
-      return ColoredBox(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Image.asset('assets/plezy.png', width: 220),
-                  _buildStatusText(context),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: _serverStatus.isEmpty
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: coralColor),
-                          )
-                        : _buildServerStatusList(context),
-                  ),
-                ],
+    // MaggioFlix: full-screen artwork behind the server connection status. Phones get the
+    // vertical picture; TV, desktop and any landscape window get the horizontal one.
+    const accentColor = Color(0xFFE53935);
+    final size = MediaQuery.sizeOf(context);
+    final landscape = PlatformDetector.isTV() || PlatformDetector.isDesktopOS() || size.width > size.height;
+    final artwork = landscape ? 'assets/maggioflix_splash_landscape.jpg' : 'assets/maggioflix_splash_portrait.jpg';
+    final artworkAspect = landscape ? 1408 / 768 : 687 / 1024;
+    final baseTheme = Theme.of(context);
+    final overlayTheme = baseTheme.copyWith(
+      colorScheme: baseTheme.colorScheme.copyWith(onSurface: Colors.white),
+    );
+
+    return ColoredBox(
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _MaggioflixSplashArtwork(asset: artwork, aspectRatio: artworkAspect),
+          // Darken the lower part so the status text stays readable on any picture.
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                stops: [0.0, 0.55, 1.0],
+                colors: [Color(0x00000000), Color(0x33000000), Color(0xD9000000)],
               ),
             ),
           ),
-        ),
-      );
-    }
-    return ColoredBox(
-      color: Theme.of(context).scaffoldBackgroundColor,
-      child: Stack(
-        children: [
-          Center(child: Image.asset('assets/plezy.png', width: 380)),
-          Positioned(left: 0, right: 0, bottom: height * 0.5 - 170, child: _buildStatusText(context)),
-          Positioned(
-            left: 0,
-            right: 0,
-            top: height * 0.5 + 180,
-            child: Center(
-              child: _serverStatus.isEmpty
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: coralColor),
-                    )
-                  : _buildServerStatusList(context),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(24, 16, 24, size.height < 500 ? 16 : 40),
+                child: Theme(
+                  data: overlayTheme,
+                  child: Builder(
+                    builder: (context) => Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildStatusText(context),
+                        const SizedBox(height: 16),
+                        Center(
+                          child: _serverStatus.isEmpty
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: accentColor),
+                                )
+                              : _buildServerStatusList(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// MaggioFlix: draws the startup artwork edge to edge. When covering the screen would crop away a
+/// big slice of the picture (a tall phone, a narrow desktop window) the whole picture is shown
+/// instead, over a blurred, darkened copy of itself that fills the empty bands.
+class _MaggioflixSplashArtwork extends StatelessWidget {
+  const _MaggioflixSplashArtwork({required this.asset, required this.aspectRatio});
+
+  final String asset;
+  final double aspectRatio;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        if (!w.isFinite || !h.isFinite || w <= 0 || h <= 0) {
+          return Image.asset(asset, fit: BoxFit.cover);
+        }
+        final screenAspect = w / h;
+        final cropped = screenAspect > aspectRatio ? 1 - aspectRatio / screenAspect : 1 - screenAspect / aspectRatio;
+        if (cropped <= 0.12) {
+          return Image.asset(asset, fit: BoxFit.cover, width: w, height: h);
+        }
+        final bandsAreVertical = screenAspect < aspectRatio;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 28, sigmaY: 28, tileMode: TileMode.decal),
+              child: Image.asset(asset, fit: BoxFit.cover, width: w, height: h),
+            ),
+            const ColoredBox(color: Color(0x8C000000)),
+            Center(
+              child: ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: (rect) => LinearGradient(
+                  begin: bandsAreVertical ? Alignment.topCenter : Alignment.centerLeft,
+                  end: bandsAreVertical ? Alignment.bottomCenter : Alignment.centerRight,
+                  stops: const [0.0, 0.08, 0.92, 1.0],
+                  colors: const [Color(0x00FFFFFF), Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+                ).createShader(rect),
+                child: AspectRatio(
+                  aspectRatio: aspectRatio,
+                  child: Image.asset(asset, fit: BoxFit.cover),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

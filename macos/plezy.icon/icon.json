@@ -1,6 +1,6 @@
 {
   "fill": {
-    "solid": "gray:0.07000,1.00000"
+    "solid": "gray:0.09000,1.00000"
   },
   "groups": [
     {
@@ -8,8 +8,8 @@
         {
           "glass": false,
           "hidden": false,
-          "image-name": "maggioflix.png",
-          "name": "maggioflix",
+          "image-name": "maggioflix_m.png",
+          "name": "maggioflix_m",
           "position": {
             "scale": 1,
             "translation-in-points": [

@@ -161,6 +161,9 @@ flutter:
   assets:
     - assets/licenses/SpatialAudioBridge.txt
     - assets/plezy.png
+    # MaggioFlix: startup screen artwork (portrait on phones, landscape on TV/desktop).
+    - assets/maggioflix_splash_portrait.jpg
+    - assets/maggioflix_splash_landscape.jpg
     - assets/plezy_adaptive_foreground.svg
     - assets/plex_chevron.svg
     - assets/jellyfin_icon.svg
