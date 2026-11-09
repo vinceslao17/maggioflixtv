@@ -16,6 +16,7 @@ import '../media/media_kind.dart';
 import '../models/catalog/catalog_item.dart';
 import '../providers/catalog_sources_provider.dart';
 import '../services/deep_links/deep_link_service.dart';
+import 'live.dart';
 import '../utils/platform_detector.dart';
 import '../services/catalog/seerr_catalog_source.dart';
 import '../utils/app_logger.dart';
@@ -113,6 +114,7 @@ class MfRequest {
   final bool is4k;
   final MediaKind kind;
   final int? tmdbId;
+  final int? tvdbId;
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final List<int> seasons;
@@ -132,6 +134,7 @@ class MfRequest {
     required this.is4k,
     required this.kind,
     required this.tmdbId,
+    this.tvdbId,
     required this.createdAt,
     this.updatedAt,
     required this.seasons,
@@ -152,6 +155,7 @@ class MfRequest {
       is4k: is4k,
       kind: type == 'tv' ? MediaKind.show : MediaKind.movie,
       tmdbId: _int(media['tmdbId']),
+      tvdbId: _int(media['tvdbId']),
       createdAt: DateTime.tryParse('${json['createdAt'] ?? ''}')?.toLocal(),
       updatedAt: DateTime.tryParse('${json['updatedAt'] ?? ''}')?.toLocal(),
       seasons: [
@@ -170,6 +174,13 @@ class MfRequest {
 
   /// Il titolo richiesto è sul server.
   bool get isAvailable => status == 5 || mediaStatus == 5;
+
+  /// Download in tempo reale dal ponte MaggioFlix Live, se c'è.
+  MfLiveItem? get live =>
+      isAvailable ? null : MaggioflixLive.instance.itemFor(kind, tmdbId: tmdbId, tvdbId: tvdbId, is4k: is4k);
+
+  /// C'è un download in corso (dal ponte o da Seerr).
+  bool get isDownloading => live != null || downloads.isNotEmpty;
 
   /// Richiesta ancora aperta: in attesa, approvata o in download.
   bool get isInProgress => !isAvailable && (status == 1 || status == 2 || downloads.isNotEmpty);
@@ -568,7 +579,7 @@ class MfRequestsController extends ChangeNotifier {
   bool _disposed = false;
   final Map<String, Future<({CatalogItem item, String? thumbUrl})?>> _items = {};
 
-  bool get hasActive => requests.any((r) => r.downloads.isNotEmpty || r.isInProgress);
+  bool get hasActive => requests.any((r) => r.isDownloading || r.isInProgress);
 
   /// Richieste ancora aperte, per il numerino sulla scheda.
   int get activeCount => requests.where((r) => r.isInProgress).length;
@@ -693,6 +704,7 @@ class MaggioflixRequestsScreen extends StatefulWidget {
 
 class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
   final MfRequestsController _controller = MfRequestsController();
+  VoidCallback? _releaseLive;
 
   @override
   void initState() {
@@ -705,12 +717,16 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
     super.didChangeDependencies();
     final source = Provider.of<CatalogSourcesProvider>(context).seerrSource;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _controller.bind(source);
+      if (!mounted) return;
+      _controller.bind(source);
+      _releaseLive ??= MaggioflixLive.instance.watch(source);
+      MaggioflixLive.instance.updateSource(source);
     });
   }
 
   @override
   void dispose() {
+    _releaseLive?.call();
     _controller.removeListener(_changed);
     _controller.dispose();
     super.dispose();
@@ -811,6 +827,14 @@ _StatusInfo _statusOf(MfRequest r, ThemeData theme) {
       return _StatusInfo(_tr('Rifiutata', 'Declined'), Symbols.block_rounded, theme.colorScheme.error);
     case 4:
       return _StatusInfo(_tr('Non riuscita', 'Failed'), Symbols.error_rounded, theme.colorScheme.error);
+  }
+  final live = r.live;
+  if (live != null) {
+    return _StatusInfo(
+      live.isDownloading ? _tr('In download', 'Downloading') : live.stateLabel,
+      live.isImporting ? Symbols.move_to_inbox_rounded : Symbols.download_rounded,
+      Colors.lightBlueAccent,
+    );
   }
   if (r.downloads.isNotEmpty) {
     return _StatusInfo(_tr('In download', 'Downloading'), Symbols.download_rounded, Colors.lightBlueAccent);
@@ -923,6 +947,9 @@ class _LiveDownloadProgressState extends State<_LiveDownloadProgress> {
     final locale = LocaleSettings.currentLocale.intlLocaleName;
     final now = DateTime.now();
 
+    final live = r.live;
+    if (live != null) return _buildLive(context, live, now, locale, muted);
+
     final total = r.downloads.fold<double>(0, (sum, d) => sum + d.size);
     final leftAtFetch = r.downloads.fold<double>(0, (sum, d) => sum + d.sizeLeft);
     final downloading = r.downloads.any((d) => d.status.toLowerCase() == 'downloading');
@@ -996,6 +1023,48 @@ class _LiveDownloadProgressState extends State<_LiveDownloadProgress> {
   }
 }
 
+extension on _LiveDownloadProgressState {
+  /// Dati in tempo reale dal ponte (qBittorrent), aggiornati ogni secondo.
+  Widget _buildLive(BuildContext context, MfLiveItem live, DateTime now, String locale, Color muted) {
+    final theme = Theme.of(context);
+    final progress = live.progressAt(now);
+    final remaining = live.remainingAt(now);
+    final doneBytes = (live.size * progress).round();
+    final pct = widget.compact
+        ? '${NumberFormat('0', locale).format(progress * 100)}%'
+        : '${NumberFormat('0.0', locale).format(progress * 100)}%';
+    final episodes = live.episodes > 1 ? _tr('${live.episodes} episodi', '${live.episodes} episodes') : null;
+    final details = <String>[
+      pct,
+      if (!widget.compact && live.size > 0)
+        '${_formatBytes(doneBytes.toDouble(), locale)} ${_tr('di', 'of')} ${_formatBytes(live.size.toDouble(), locale)}',
+      if (live.isDownloading && live.speed > 0) _formatSpeed(live.speed.toDouble(), locale),
+      if (live.isDownloading && remaining != null)
+        _tr('mancano ${_formatDuration(remaining)}', '${_formatDuration(remaining)} left'),
+      if (!live.isDownloading) live.stateLabel,
+      if (!widget.compact && live.isDownloading && live.seeds > 0) _tr('${live.seeds} fonti', '${live.seeds} seeds'),
+      if (episodes != null) episodes,
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: live.isImporting ? null : progress,
+            minHeight: widget.compact ? 5 : 6,
+            color: widget.color,
+            backgroundColor: widget.color == null ? null : theme.colorScheme.surfaceContainerHighest,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(details.join(' · '), style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+      ],
+    );
+  }
+}
+
 class _RequestTile extends StatelessWidget {
   final MfRequest request;
   final Future<({CatalogItem item, String? thumbUrl})?> item;
@@ -1005,6 +1074,13 @@ class _RequestTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: MaggioflixLive.instance,
+      builder: (context, _) => _buildCard(context),
+    );
+  }
+
+  Widget _buildCard(BuildContext context) {
     return FutureBuilder<({CatalogItem item, String? thumbUrl})?>(
       future: item,
       builder: (context, snapshot) {
@@ -1074,7 +1150,7 @@ class _RequestTile extends StatelessWidget {
                   ),
                 ],
               ),
-              if (request.downloads.isNotEmpty) ...[
+              if (request.isDownloading) ...[
                 const SizedBox(height: 6),
                 _LiveDownloadProgress(request: request),
               ],
@@ -1108,18 +1184,23 @@ class MaggioflixRequestsPhonePage extends StatefulWidget {
 
 class _MaggioflixRequestsPhonePageState extends State<MaggioflixRequestsPhonePage> {
   final MfRequestsController _controller = MfRequestsController();
+  VoidCallback? _releaseLive;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final source = Provider.of<CatalogSourcesProvider>(context).seerrSource;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _controller.bind(source);
+      if (!mounted) return;
+      _controller.bind(source);
+      _releaseLive ??= MaggioflixLive.instance.watch(source);
+      MaggioflixLive.instance.updateSource(source);
     });
   }
 
   @override
   void dispose() {
+    _releaseLive?.call();
     _controller.dispose();
     super.dispose();
   }
@@ -1306,6 +1387,10 @@ _MfPhoneStatus _phoneStatusOf(MfRequest r, CatalogItem? item, ThemeData theme) {
   if (r.status == 3) return _MfPhoneStatus(_tr('Rifiutata', 'Declined'), theme.colorScheme.error);
   if (r.status == 4) return _MfPhoneStatus(_tr('Non riuscita', 'Failed'), theme.colorScheme.error);
   if (r.isAvailable) return _MfPhoneStatus(_tr('Disponibile', 'Available'), mfGreen);
+  final live = r.live;
+  if (live != null) {
+    return _MfPhoneStatus(live.isDownloading ? _tr('In download', 'Downloading') : live.stateLabel, mfCyan);
+  }
   if (r.downloads.isNotEmpty) return _MfPhoneStatus(_tr('In download', 'Downloading'), mfCyan);
   if (r.mediaStatus == 4) {
     return _MfPhoneStatus(
@@ -1339,6 +1424,13 @@ class _MfRequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: MaggioflixLive.instance,
+      builder: (context, _) => _buildCard(context),
+    );
+  }
+
+  Widget _buildCard(BuildContext context) {
     return FutureBuilder<({CatalogItem item, String? thumbUrl})?>(
       future: item,
       builder: (context, snapshot) {
@@ -1427,7 +1519,7 @@ class _MfRequestCard extends StatelessWidget {
                             ),
                           ],
                         ),
-                        if (request.downloads.isNotEmpty) ...[
+                        if (request.isDownloading) ...[
                           const SizedBox(height: 6),
                           _LiveDownloadProgress(request: request, color: mfCyan, compact: true),
                         ] else if (status.detail != null) ...[

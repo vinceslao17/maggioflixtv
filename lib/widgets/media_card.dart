@@ -17,6 +17,7 @@ import '../media/media_item_types.dart';
 import '../media/media_kind.dart';
 import '../media/media_playlist.dart';
 import '../mixins/context_menu_tap_mixin.dart';
+import '../maggioflix/live.dart';
 import '../models/catalog/catalog_item.dart';
 import '../models/catalog/catalog_labels.dart';
 import '../models/catalog/catalog_metadata.dart';
@@ -1444,7 +1445,8 @@ class _CatalogBadges extends StatelessWidget {
 
   /// MaggioFlix: stato sul server a colori (verde disponibile, giallo
   /// richiesto, azzurro in lavorazione, rosso rifiutato), il resto in nero.
-  (Color, Color) _colorsFor(String label) {
+  (Color, Color) _colorsFor(String label, [String? liveLabel]) {
+    if (liveLabel != null && label == liveLabel) return (const Color(0xFF1785B0), Colors.white);
     final state = item?.serverState;
     if (state != null) {
       if (label == _catalogAvailabilityBadge(state)) return (const Color(0xFF1F8A55), Colors.white);
@@ -1461,6 +1463,26 @@ class _CatalogBadges extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tmdbId = item?.ids.tmdb;
+    if (tmdbId == null) return _buildBadges(context, labels);
+    return ListenableBuilder(
+      listenable: MaggioflixLive.instance,
+      builder: (context, _) {
+        final kind = item!.kind;
+        final live = MaggioflixLive.instance.itemFor(kind, tmdbId: tmdbId) ??
+            MaggioflixLive.instance.itemFor(kind, tmdbId: tmdbId, is4k: true);
+        if (live == null) return _buildBadges(context, labels);
+        // MaggioFlix: avanzamento dal vivo al posto dell'etichetta della richiesta.
+        final requestLabel = _catalogRequestBadge(item!.serverState);
+        final liveLabel = live.isDownloading
+            ? '${(live.progressAt(DateTime.now()) * 100).floor()}%'
+            : (live.isImporting ? 'Import…' : '${(live.progress * 100).floor()}% · ${live.stateLabel}');
+        return _buildBadges(context, [liveLabel, ...labels.where((l) => l != requestLabel)], liveLabel: liveLabel);
+      },
+    );
+  }
+
+  Widget _buildBadges(BuildContext context, List<String> labels, {String? liveLabel}) {
     return Positioned(
       key: const Key('catalog-badges'),
       top: 6,
@@ -1473,7 +1495,7 @@ class _CatalogBadges extends StatelessWidget {
             if (index > 0) const SizedBox(height: 3),
             DecoratedBox(
               decoration: BoxDecoration(
-                color: _colorsFor(labels[index]).$1,
+                color: _colorsFor(labels[index], liveLabel).$1,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Padding(
@@ -1482,7 +1504,7 @@ class _CatalogBadges extends StatelessWidget {
                   labels[index],
                   maxLines: 1,
                   overflow: .ellipsis,
-                  style: TextStyle(color: _colorsFor(labels[index]).$2, fontSize: 9, fontWeight: .w700, height: 1),
+                  style: TextStyle(color: _colorsFor(labels[index], liveLabel).$2, fontSize: 9, fontWeight: .w700, height: 1),
                 ),
               ),
             ),

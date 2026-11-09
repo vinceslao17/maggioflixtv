@@ -32,3 +32,7 @@ const bool maggioflixRequestPageSeerrOnly = true;
 /// Scheda titolo: le valutazioni (Rotten Tomatoes, IMDb...) stanno in alto al
 /// posto del punteggio con la stella, invece che in una sezione più in basso.
 const bool maggioflixRatingsAtTop = true;
+
+/// MaggioFlix Live: ponte sul server che legge qBittorrent ogni secondo
+/// (server/maggioflix-live). Vuoto = non usarlo, restano i dati di Seerr.
+const String maggioflixLiveUrl = 'https://live.maggioflix.com';

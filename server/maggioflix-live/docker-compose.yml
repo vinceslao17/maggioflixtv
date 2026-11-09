@@ -1,0 +1,25 @@
+# Stack Portainer per MaggioFlix Live.
+# Usa gli stessi indirizzi interni che hai messo nel tunnel Cloudflare per
+# qbittorrent, radarr, sonarr e seerr. Lascia vuoto cio' che non hai (es. 4K).
+services:
+  maggioflix-live:
+    image: ghcr.io/vinceslao17/maggioflix-live:latest
+    container_name: maggioflix-live
+    restart: unless-stopped
+    environment:
+      QBIT_URL: "http://gluetun:8080"
+      QBIT_USER: "admin"
+      QBIT_PASS: ""
+      RADARR_URL: "http://radarr:7878"
+      RADARR_KEY: ""
+      RADARR4K_URL: "http://radarr4k:7878"
+      RADARR4K_KEY: ""
+      SONARR_URL: "http://sonarr:8989"
+      SONARR_KEY: ""
+      SEERR_URL: "http://seerr:5055"
+    networks:
+      - maggio_default
+
+networks:
+  maggio_default:
+    external: true

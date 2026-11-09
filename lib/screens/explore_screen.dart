@@ -39,6 +39,7 @@ import 'catalog_search_screen.dart';
 import 'libraries/state_messages.dart';
 import '../maggioflix/requests.dart';
 import '../maggioflix/calendar.dart';
+import '../maggioflix/live.dart';
 import '../media/catalog_item_ref.dart';
 import '../media/media_kind.dart';
 import '../models/catalog/catalog_metadata.dart';
@@ -89,6 +90,16 @@ class ExploreScreenState extends State<ExploreScreen>
   _MfDiscoverFilter _mfFilter = _MfDiscoverFilter.all;
   final MfRequestsController _mfRequests = MfRequestsController()..pollingEnabled = false;
   bool get _mfTabbed => !PlatformDetector.isTV() && !PlatformDetector.isDesktopOS();
+  VoidCallback? _releaseLive;
+
+  void _watchLive(bool on) {
+    if (on) {
+      _releaseLive ??= MaggioflixLive.instance.watch(_sources.seerrSource);
+    } else {
+      _releaseLive?.call();
+      _releaseLive = null;
+    }
+  }
   final _hubFocusMemory = HubFocusMemory();
   final TvSpotlightController _spotlight = TvSpotlightController();
 
@@ -116,6 +127,9 @@ class ExploreScreenState extends State<ExploreScreen>
     _sources = context.read<CatalogSourcesProvider>();
     _activeSourceId = _sources.activeSource?.id;
     _sources.addListener(_onActiveSourceChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _mfTabVisible) _watchLive(true);
+    });
     if (_mfTabbed) {
       _mfRequests.addListener(_onMfRequestsChanged);
       _scheduleMfBind();
@@ -149,6 +163,7 @@ class ExploreScreenState extends State<ExploreScreen>
   /// sitting under the new source's name.
   void _onActiveSourceChanged() {
     if (_mfTabbed) _scheduleMfBind();
+    MaggioflixLive.instance.updateSource(_sources.seerrSource);
     final id = _sources.activeSource?.id;
     if (id == _activeSourceId) return;
     _activeSourceId = id;
@@ -180,6 +195,7 @@ class ExploreScreenState extends State<ExploreScreen>
   void onTabShown() {
     _explore.ensureFresh();
     _mfTabVisible = true;
+    _watchLive(true);
     _updateMfPolling();
     if (_mfTabbed) _mfRequests.silentReload();
   }
@@ -187,12 +203,14 @@ class ExploreScreenState extends State<ExploreScreen>
   @override
   void onTabHidden() {
     _mfTabVisible = false;
+    _watchLive(false);
     _updateMfPolling();
   }
 
   @override
   void dispose() {
     _sources.removeListener(_onActiveSourceChanged);
+    _watchLive(false);
     _mfRequests.removeListener(_onMfRequestsChanged);
     _mfRequests.dispose();
     _spotlight.dispose();

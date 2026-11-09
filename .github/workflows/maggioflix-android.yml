@@ -23,6 +23,8 @@ on:
       - "ios/**"
       - "tvos/**"
       - "linux/**"
+      - "server/**"
+      - ".github/workflows/maggioflix-live.yml"
       - "Casks/**"
 
 concurrency:
