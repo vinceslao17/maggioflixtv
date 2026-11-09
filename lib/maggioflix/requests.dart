@@ -237,6 +237,8 @@ String maggioflixBrowseLabel() => _tr('Sfoglia', 'Browse');
 String maggioflixAvailableLabel() => _tr('Disponibile', 'Available');
 
 String maggioflixMoreSeasonsLabel() => _tr('Altre stagioni', 'More seasons');
+
+String maggioflixRequestMoreLabel() => _tr('Richiedi altre stagioni', 'Request more');
 String maggioflixRequestedLabel() => _tr('Richiesto', 'Requested');
 
 /// Etichetta del pulsante che apre "Le mie richieste".
@@ -1615,6 +1617,12 @@ class MaggioflixLiveStatusPill extends StatefulWidget {
   /// A tutta larghezza (telefono); altrimenti larga quanto il testo, fino a 420.
   final bool expand;
 
+  /// Serie con solo alcune stagioni sul server.
+  final bool partial;
+
+  /// Es. "1 di 6 stagioni".
+  final String? partialDetail;
+
   const MaggioflixLiveStatusPill({
     super.key,
     required this.kind,
@@ -1624,6 +1632,8 @@ class MaggioflixLiveStatusPill extends StatefulWidget {
     this.finishing = false,
     this.focused = false,
     this.expand = false,
+    this.partial = false,
+    this.partialDetail,
   });
 
   @override
@@ -1655,7 +1665,7 @@ class _MaggioflixLiveStatusPillState extends State<MaggioflixLiveStatusPill> {
   }
 
   MfLiveItem? get _live {
-    if (widget.available) return null;
+    if (widget.available && !widget.partial) return null;
     final live = MaggioflixLive.instance;
     return live.itemFor(widget.kind, tmdbId: widget.tmdbId, tvdbId: widget.tvdbId) ??
         live.itemFor(widget.kind, tmdbId: widget.tmdbId, tvdbId: widget.tvdbId, is4k: true);
@@ -1674,17 +1684,18 @@ class _MaggioflixLiveStatusPillState extends State<MaggioflixLiveStatusPill> {
     String? subtitle;
     double? fill;
 
-    if (widget.available || (live?.isOnPlex ?? false)) {
+    final onPlex = live?.isOnPlex ?? false;
+    if (widget.available && !widget.partial) {
       accent = Colors.green;
       icon = Symbols.check_circle_rounded;
       title = maggioflixAvailableLabel();
-    } else if (live != null && live.isImported) {
+    } else if (live != null && !onPlex && live.isImported) {
       accent = const Color(0xFF4FC3F7);
       icon = Symbols.move_to_inbox_rounded;
       title = _tr('Importazione', 'Importing');
       subtitle = _tr('Quasi pronto: arriva nell\'app a momenti', 'Almost ready: in the app any moment');
       fill = 1.0;
-    } else if (live != null) {
+    } else if (live != null && !onPlex) {
       accent = const Color(0xFF4FC3F7);
       final progress = live.progressAt(now);
       final pct = '${NumberFormat('0', locale).format((progress * 100).floorToDouble())}%';
@@ -1717,6 +1728,15 @@ class _MaggioflixLiveStatusPillState extends State<MaggioflixLiveStatusPill> {
             : null;
       }
       if (subtitle != null && subtitle.isEmpty) subtitle = null;
+    } else if (widget.partial) {
+      accent = mfGreen;
+      icon = Symbols.incomplete_circle_rounded;
+      title = _tr('Parzialmente disponibile', 'Partially available');
+      subtitle = widget.partialDetail;
+    } else if (widget.available || onPlex) {
+      accent = Colors.green;
+      icon = Symbols.check_circle_rounded;
+      title = maggioflixAvailableLabel();
     } else if (widget.finishing) {
       accent = const Color(0xFF4FC3F7);
       icon = Symbols.move_to_inbox_rounded;

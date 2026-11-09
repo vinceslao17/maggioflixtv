@@ -713,7 +713,7 @@ def build_calendar(start: str, end: str) -> dict:
 
 
 def _all_series(url: str, key: str) -> list:
-    return cached(f"series:{url}", 60, lambda: arr_get(url, key, "/api/v3/series") or [])
+    return cached(f"series:{url}", 15, lambda: arr_get(url, key, "/api/v3/series") or [])
 
 
 def build_series(tmdb: int | None, tvdb: int | None) -> dict:

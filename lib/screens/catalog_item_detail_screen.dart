@@ -63,6 +63,7 @@ import '../widgets/settings_section.dart';
 import '../widgets/stat_chip.dart';
 import '../maggioflix_config.dart';
 import '../maggioflix/requests.dart';
+import '../maggioflix/seasons.dart';
 import '../maggioflix/live.dart';
 
 /// Detail screen for a catalog item (Explore tab). Renders from provider
@@ -112,6 +113,12 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
   bool _mfLivePresent = false;
   bool _mfFinishing = false;
   Timer? _mfReloadTimer;
+
+  /// MaggioFlix: stagioni della serie con il loro stato sul server.
+  List<MfSeasonInfo>? _mfSeasons;
+  bool _mfSeasonsLoading = false;
+  bool _mfSeasonsRequested = false;
+  String? _mfLastLiveState;
 
   /// The connected trackers' scores, merged as they arrive; empty until then.
   List<MediaRatingSource> _communityRatings = const [];
@@ -164,6 +171,7 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
       MaggioflixLive.instance.addListener(_onMfLive);
       _mfLivePresent = _mfLiveItem() != null;
     }
+    maggioflixRequestsChanged.addListener(_onMfRequestsChanged);
     _watchlistSource = sources.watchlistSourceFor(widget.item);
     final source = _watchlistSource;
     if (source != null) {
@@ -187,6 +195,27 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
         MaggioflixLive.instance.itemFor(item.kind, tmdbId: tmdbId, tvdbId: tvdbId, is4k: true);
   }
 
+  void _onMfRequestsChanged() {
+    // Il server ci mette un attimo a registrare la nuova richiesta.
+    unawaited(Future<void>.delayed(const Duration(seconds: 2), _loadMfSeasons));
+  }
+
+  Future<void> _loadMfSeasons() async {
+    final item = _item;
+    final source = _requestSource;
+    final tmdbId = item.ids.tmdb;
+    if (!mounted || item.kind == MediaKind.movie || source == null || tmdbId == null || _mfSeasonsLoading) return;
+    _mfSeasonsLoading = true;
+    try {
+      final seasons = await MaggioflixSeasons.load(source, tmdbId, tvdbId: item.ids.tvdb);
+      if (mounted) setState(() => _mfSeasons = seasons);
+    } catch (e) {
+      appLogger.w('MaggioFlix: stagioni non disponibili', error: e);
+    } finally {
+      _mfSeasonsLoading = false;
+    }
+  }
+
   /// Compare o sparisce il download: la pillola cambia. Quando arriva sul
   /// server, la scheda si ricarica ogni 10 s finché non risulta disponibile.
   void _onMfLive() {
@@ -195,6 +224,11 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
     final live = _mfLiveItem();
     final present = live != null;
     final arrived = (live?.isImported ?? false) || (live?.isOnPlex ?? false);
+    if (live?.state != _mfLastLiveState) {
+      final hadState = _mfLastLiveState != null || live != null;
+      _mfLastLiveState = live?.state;
+      if (hadState && _mfSeasons != null) unawaited(_loadMfSeasons());
+    }
     final finished = _mfLivePresent && !present && MaggioflixLive.instance.reachable;
     if (present != _mfLivePresent || finished) {
       setState(() {
@@ -225,6 +259,7 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
   @override
   void dispose() {
     _mfReloadTimer?.cancel();
+    maggioflixRequestsChanged.removeListener(_onMfRequestsChanged);
     MaggioflixLive.instance.removeListener(_onMfLive);
     _mfReleaseLive?.call();
     _backButtonFocusNode.dispose();
@@ -883,8 +918,17 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
   }
 
   /// MaggioFlix, telefono: stato della richiesta (con avanzamento dal vivo) a tutta
-  /// larghezza e, per le serie, "Altre stagioni" sotto. Senza richiesta: "Richiedi".
-  Widget? _buildMfRequestRow(BuildContext hostContext, CatalogItem item, bool available, bool showState) {
+  /// larghezza; per le serie, sotto, le stagioni con "Richiedi altre stagioni".
+  /// Senza richiesta: "Richiedi".
+  Widget? _buildMfRequestRow(
+    BuildContext hostContext,
+    CatalogItem item, {
+    required bool available,
+    required bool showState,
+    required bool partial,
+    required String? partialDetail,
+    required List<MfSeasonInfo>? seasons,
+  }) {
     final seerr = _requestSource;
     final tmdbId = item.ids.tmdb;
     if (seerr == null || tmdbId == null) return null;
@@ -892,9 +936,11 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
       showSeerrRequestSheet(hostContext, source: seerr, kind: item.kind, tmdbId: tmdbId, title: item.title),
     );
     const padding = EdgeInsets.symmetric(horizontal: 20, vertical: 14);
+    final isShow = item.kind != MediaKind.movie;
+    final Widget top;
     if (!showState) {
       if (!_canRequest) return null;
-      return SizedBox(
+      top = SizedBox(
         width: double.infinity,
         child: FilledButton.icon(
           onPressed: openSheet,
@@ -903,33 +949,45 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
           label: Text(t.seerr.request),
         ),
       );
+    } else {
+      top = SizedBox(
+        width: double.infinity,
+        child: MaggioflixLiveStatusPill(
+          kind: item.kind,
+          tmdbId: tmdbId,
+          tvdbId: item.ids.tvdb,
+          available: available,
+          partial: partial,
+          partialDetail: partialDetail,
+          finishing: _mfFinishing,
+          expand: true,
+        ),
+      );
     }
-    final pill = MaggioflixLiveStatusPill(
-      kind: item.kind,
-      tmdbId: tmdbId,
-      tvdbId: item.ids.tvdb,
-      available: available,
-      finishing: _mfFinishing,
-      expand: true,
-    );
-    if (item.kind == MediaKind.movie) return SizedBox(width: double.infinity, child: pill);
-    final theme = Theme.of(hostContext);
+    if (!isShow) return top;
+    final Widget? below;
+    if (seasons != null && seasons.isNotEmpty) {
+      below = MfSeasonsPanel(
+        seasons: seasons,
+        kind: item.kind,
+        tmdbId: tmdbId,
+        tvdbId: item.ids.tvdb,
+        onRequestMore: showState ? openSheet : null,
+      );
+    } else if (showState && seasons != null) {
+      // Stagioni non lette: almeno il pulsante per chiederne altre.
+      below = FilledButton.tonalIcon(
+        onPressed: openSheet,
+        style: FilledButton.styleFrom(padding: padding),
+        icon: const AppIcon(Symbols.playlist_add_rounded, fill: 1),
+        label: Text(maggioflixRequestMoreLabel()),
+      );
+    } else {
+      below = null;
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        pill,
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: openSheet,
-          style: OutlinedButton.styleFrom(
-            padding: padding,
-            foregroundColor: theme.colorScheme.onSurface,
-            side: BorderSide(color: theme.colorScheme.onSurface.withValues(alpha: 0.35)),
-          ),
-          icon: const AppIcon(Symbols.playlist_add_rounded, fill: 1),
-          label: Text(maggioflixMoreSeasonsLabel()),
-        ),
-      ],
+      children: [top, if (below != null) ...[const SizedBox(height: 12), below]],
     );
   }
 
@@ -998,18 +1056,17 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
     }
 
     final server = item.serverState;
-    if (server != null) {
+    // MaggioFlix: disponibilità, richiesta e stagioni le mostrano già la pillola e
+    // l'elenco delle stagioni.
+    if (server != null && _requestSource == null) {
       if (server.availability case final availability?) {
         add(availabilityLabel(availability, is4k: false));
       }
       if (server.availability4k case final availability?) {
         add(availabilityLabel(availability, is4k: true));
       }
-      // MaggioFlix: lo stato della richiesta lo mostra già la pillola.
-      if (_requestSource == null) {
-        if (server.request case final request?) add(requestStateLabel(request, is4k: false));
-        if (server.request4k case final request?) add(requestStateLabel(request, is4k: true));
-      }
+      if (server.request case final request?) add(requestStateLabel(request, is4k: false));
+      if (server.request4k case final request?) add(requestStateLabel(request, is4k: true));
       if (server.availableSeasons case final available? when server.totalSeasons != null) {
         add(t.explore.badge.seasonsAvailable(available: available, total: server.totalSeasons!));
       }
@@ -1522,9 +1579,22 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
         };
     // MaggioFlix: sul telefono lo stato della richiesta va su una riga sua, a tutta
     // larghezza, sotto locandina e titolo (accanto alla locandina non ci sta).
+    if (!_mfSeasonsRequested && item.kind != MediaKind.movie && _requestSource != null && tmdbId != null) {
+      _mfSeasonsRequested = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_loadMfSeasons()));
+    }
+    final mfSeasons = item.kind == MediaKind.movie ? null : _mfSeasons;
+    final mfSummary = mfSeasons == null || mfSeasons.isEmpty ? null : mfSeasonsSummary(mfSeasons);
+    final mfAllSeasons = mfSummary != null && mfSummary.complete == mfSummary.total;
+    final mfPartial = item.kind != MediaKind.movie &&
+        (mfSummary != null
+            ? !mfAllSeasons && (mfSummary.complete > 0 || mfSummary.any)
+            : item.serverState?.availability == CatalogAvailability.partiallyAvailable);
+    final mfPartialDetail = mfSummary == null ? null : mfSeasonsCountLabel(mfSummary.complete, mfSummary.total);
+    final mfAvailableNow = (mfAvailable && !mfPartial) || mfAllSeasons;
     final mfShowState = _requestSource != null &&
         tmdbId != null &&
-        (mfAvailable || mfRequested || _mfLivePresent || _mfFinishing);
+        (mfAvailable || mfRequested || _mfLivePresent || _mfFinishing || mfPartial || mfAllSeasons);
     final mfCompact = !PlatformDetector.isTV() && MediaQuery.sizeOf(context).width < 600;
     // Subscriptions for [_requestSource]: the source itself (disconnect) and
     // the permission mask (grant/revoke), both adopted in place upstream.
@@ -1664,16 +1734,16 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
                                                   onPressed: () => unawaited(_toggleWatchlist()),
                                                 ),
                                               if (!mfCompact) ...[
-                                              if (_requestSource != null &&
-                                                  tmdbId != null &&
-                                                  (mfAvailable || mfRequested || _mfLivePresent || _mfFinishing))
+                                              if (mfShowState)
                                                 FocusableAction(
                                                   debugLabel: 'catalog_request_state',
                                                   builder: (context, state) => MaggioflixLiveStatusPill(
                                                     kind: item.kind,
                                                     tmdbId: tmdbId,
                                                     tvdbId: item.ids.tvdb,
-                                                    available: mfAvailable,
+                                                    available: mfAvailableNow,
+                                                    partial: mfPartial,
+                                                    partialDetail: mfPartialDetail,
                                                     finishing: _mfFinishing,
                                                     focused: state.showFocus,
                                                   ),
@@ -1683,7 +1753,8 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
                                               if (_requestSource case final SeerrCatalogSource seerr
                                                   when tmdbId != null &&
                                                       item.kind != MediaKind.movie &&
-                                                      (mfAvailable || mfRequested || _mfLivePresent || _mfFinishing))
+                                                      mfShowState &&
+                                                      (mfSeasons == null || mfSeasons.any((s) => !s.covered)))
                                                 FocusableAction(
                                                   debugLabel: 'catalog_request_more',
                                                   onPressed: () => unawaited(
@@ -1721,12 +1792,12 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
                                                       ),
                                                     ),
                                                     icon: const AppIcon(Symbols.playlist_add_rounded, fill: 1),
-                                                    label: Text(maggioflixMoreSeasonsLabel()),
+                                                    label: Text(maggioflixRequestMoreLabel()),
                                                   ),
                                                 )
                                               else if (_requestSource case final SeerrCatalogSource seerr
                                                   when tmdbId != null &&
-                                                      !(mfAvailable || mfRequested || _mfLivePresent || _mfFinishing))
+                                                      !mfShowState)
                                                 FocusableAction(
                                                   debugLabel: 'catalog_request',
                                                   onPressed: () => unawaited(
@@ -1781,9 +1852,30 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
                                 ],
                               ),
                               if (mfCompact)
-                                if (_buildMfRequestRow(hostContext, item, mfAvailable, mfShowState)
+                                if (_buildMfRequestRow(
+                                      hostContext,
+                                      item,
+                                      available: mfAvailableNow,
+                                      showState: mfShowState,
+                                      partial: mfPartial,
+                                      partialDetail: mfPartialDetail,
+                                      seasons: mfSeasons,
+                                    )
                                     case final Widget requestRow)
                                   ...[const SizedBox(height: 20), requestRow],
+                              // TV e PC: elenco delle stagioni sotto l'intestazione.
+                              if (!mfCompact && mfSeasons != null && mfSeasons.isNotEmpty && _requestSource != null) ...[
+                                const SizedBox(height: 20),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 680),
+                                  child: MfSeasonsPanel(
+                                    seasons: mfSeasons,
+                                    kind: item.kind,
+                                    tmdbId: tmdbId,
+                                    tvdbId: item.ids.tvdb,
+                                  ),
+                                ),
+                              ],
                               if (_buildStatsChips() case final Widget chips) ...[const SizedBox(height: 20), chips],
                               if (item.overview?.trim() case final overview? when overview.isNotEmpty) ...[
                                 const SizedBox(height: 24),

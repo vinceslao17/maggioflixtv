@@ -324,3 +324,18 @@ class MaggioflixLive extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 }
+
+/// Legge dal ponte altri dati del server (calendario, stagioni) con la sessione Seerr.
+Future<Object?> maggioflixBridgeGet(SeerrCatalogSource source, String pathAndQuery) async {
+  if (maggioflixLiveUrl.isEmpty) return null;
+  final cookie = source.client.session.cookie;
+  if (cookie.isEmpty) return null;
+  final resp = await MaggioflixLive.instance._http
+      .get(
+        Uri.parse('$maggioflixLiveUrl$pathAndQuery'),
+        headers: {'X-Seerr-Session': cookie, 'Accept': 'application/json'},
+      )
+      .timeout(const Duration(seconds: 25));
+  if (resp.statusCode != 200) throw StateError('HTTP ${resp.statusCode}');
+  return jsonDecode(resp.body);
+}

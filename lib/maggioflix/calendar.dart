@@ -4,13 +4,13 @@
 library;
 
 import 'dart:async';
+import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:provider/provider.dart';
 
-import '../focus/input_mode_tracker.dart';
 import '../i18n/app_locale_utils.dart';
 import '../i18n/strings.g.dart';
 import '../media/ids.dart';
@@ -26,9 +26,9 @@ import '../services/catalog/seerr_catalog_source.dart';
 import '../utils/app_logger.dart';
 import '../utils/catalog_navigation_helper.dart';
 import '../widgets/app_icon.dart';
-import '../widgets/focusable_list_tile.dart';
 import '../widgets/focused_scroll_scaffold.dart';
 import '../widgets/seerr_request_sheet.dart';
+import 'live.dart';
 import 'requests.dart';
 
 bool get _isItalian => LocaleSettings.currentLocale.languageCode == 'it';
@@ -38,6 +38,11 @@ String _tr(String it, String en) => _isItalian ? it : en;
 String get _locale => LocaleSettings.currentLocale.intlLocaleName;
 
 DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
+
+String _ymd(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+String _capitalized(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
 int? _int(Object? v) => v is num ? v.toInt() : (v is String ? int.tryParse(v) : null);
 
@@ -66,6 +71,15 @@ class MfCalendarEntry {
   /// Viene da una richiesta dell'utente (altrimenti da ciò che guarda).
   final bool requested;
 
+  /// Ora esatta (episodi: messa in onda), se nota.
+  final DateTime? at;
+
+  /// Già scaricato sul server.
+  final bool onServer;
+
+  final int? tvdbId;
+  final String? posterUrl;
+
   const MfCalendarEntry({
     required this.day,
     required this.kind,
@@ -77,9 +91,16 @@ class MfCalendarEntry {
     this.imageUrl,
     this.seasonToRequest,
     this.requested = false,
+    this.at,
+    this.onServer = false,
+    this.tvdbId,
+    this.posterUrl,
   });
 
   bool get isMovie => kind == MfCalendarKind.movie;
+
+  /// Colore del tipo: film ambra, serie azzurro.
+  Color get color => isMovie ? mfAmber : mfCyan;
   MediaKind get mediaKind => isMovie ? MediaKind.movie : MediaKind.show;
 }
 
@@ -110,6 +131,155 @@ abstract final class MaggioflixCalendarLoader {
     return future.whenComplete(() {
       if (identical(_inFlight, future)) _inFlight = null;
     });
+  }
+
+  static final Map<String, ({DateTime at, List<MfCalendarEntry> entries})> _rangeCache = {};
+
+  /// Tutto ciò che esce tra [start] e [end]: dal server (Radarr/Sonarr tramite
+  /// il ponte) più, da Seerr, le serie che guardi ma che il server non segue.
+  static Future<List<MfCalendarEntry>> loadRange(
+    BuildContext context,
+    DateTime start,
+    DateTime end, {
+    bool force = false,
+  }) async {
+    final source = context.read<CatalogSourcesProvider>().seerrSource;
+    if (source == null) throw StateError('Seerr non collegato');
+    final key = '${source.client.session.userId}:${_ymd(start)}:${_ymd(end)}';
+    final hit = _rangeCache[key];
+    if (!force && hit != null && DateTime.now().difference(hit.at) < const Duration(minutes: 5)) return hit.entries;
+
+    final seerrFuture = load(context, force: force).then<List<MfCalendarEntry>?>((e) => e).catchError((Object e) {
+      appLogger.w('MaggioFlix: calendario Seerr non disponibile', error: e);
+      return null;
+    });
+    List<MfCalendarEntry>? bridge;
+    try {
+      final json = await maggioflixBridgeGet(source, '/api/calendar?start=${_ymd(start)}&end=${_ymd(end)}');
+      if (json != null) bridge = _fromBridge(json);
+    } catch (e) {
+      appLogger.w('MaggioFlix: calendario del server non disponibile', error: e);
+    }
+    final seerr = await seerrFuture;
+    if (bridge == null && seerr == null) throw StateError('Calendario non disponibile');
+
+    final merged = <MfCalendarEntry>[...?bridge];
+    final known = <String>{
+      for (final e in merged) ...[
+        if (e.tmdbId > 0) '${e.isMovie}:${e.tmdbId}',
+        '${e.isMovie}:${e.title.toLowerCase()}',
+      ],
+    };
+    for (final e in seerr ?? const <MfCalendarEntry>[]) {
+      if (e.day.isBefore(start) || e.day.isAfter(end)) continue;
+      if (known.contains('${e.isMovie}:${e.tmdbId}') || known.contains('${e.isMovie}:${e.title.toLowerCase()}')) continue;
+      merged.add(e);
+    }
+    merged.sort((a, b) {
+      final byDay = a.day.compareTo(b.day);
+      if (byDay != 0) return byDay;
+      final byTime = (a.at ?? a.day).compareTo(b.at ?? b.day);
+      return byTime != 0 ? byTime : a.title.compareTo(b.title);
+    });
+    _rangeCache[key] = (at: DateTime.now(), entries: merged);
+    return merged;
+  }
+
+  static List<MfCalendarEntry> _fromBridge(Object? json) {
+    final items = json is Map ? json['items'] : null;
+    if (items is! List) return const [];
+    final now = DateTime.now();
+    final today = _day(now);
+    final timeFmt = DateFormat.Hm(_locale);
+    final out = <MfCalendarEntry>[];
+    for (final raw in items) {
+      if (raw is! Map) continue;
+      final title = (raw['title'] as String?)?.trim() ?? '';
+      if (title.isEmpty) continue;
+      final onServer = raw['hasFile'] == true;
+      final poster = raw['poster'] as String?;
+      final fanart = raw['fanart'] as String?;
+      if (raw['type'] == 'movie') {
+        final date = DateTime.tryParse('${raw['date'] ?? ''}');
+        if (date == null) continue;
+        final day = _day(date);
+        final release = raw['release'] as String? ?? 'digital';
+        final String status;
+        if (onServer) {
+          status = _tr('Sul server', 'On the server');
+        } else if (release == 'cinema') {
+          status = _tr("Arriva dopo l'uscita in digitale", 'Arrives after the digital release');
+        } else if (day.isAfter(today)) {
+          status = _tr('Si scarica appena esce', 'Downloads as soon as it is out');
+        } else {
+          status = _tr('Uscito · in attesa del download', 'Out · waiting for download');
+        }
+        out.add(
+          MfCalendarEntry(
+            day: day,
+            kind: MfCalendarKind.movie,
+            tmdbId: _int(raw['tmdbId']) ?? 0,
+            title: title,
+            detail: switch (release) {
+              'cinema' => _tr('Al cinema', 'In theaters'),
+              'physical' => _tr('Uscita in Blu-ray', 'Physical release'),
+              _ => _tr('Uscita digitale', 'Digital release'),
+            },
+            status: status,
+            statusColor: onServer ? mfGreen : null,
+            imageUrl: fanart,
+            posterUrl: poster,
+            onServer: onServer,
+            requested: true,
+          ),
+        );
+      } else {
+        final at = DateTime.tryParse('${raw['airUtc'] ?? ''}')?.toLocal();
+        final date = DateTime.tryParse('${raw['date'] ?? ''}');
+        final day = at != null ? _day(at) : (date == null ? null : _day(date));
+        if (day == null) continue;
+        final season = _int(raw['season']) ?? 0;
+        final episode = _int(raw['episode']) ?? 0;
+        final name = (raw['episodeTitle'] as String?)?.trim() ?? '';
+        final finale = raw['finale'] as String?;
+        final premiere = episode == 1;
+        final note = switch (finale) {
+          'series' => _tr(' · finale di serie', ' · series finale'),
+          'season' => _tr(' · finale di stagione', ' · season finale'),
+          _ => premiere ? _tr(' · inizio stagione', ' · season premiere') : '',
+        };
+        final hideName = name.isEmpty || name == 'TBA' || name.toLowerCase().startsWith('episod');
+        final aired = at != null && at.isBefore(now);
+        final String status;
+        if (onServer) {
+          status = _tr('Sul server', 'On the server');
+        } else if (aired) {
+          status = _tr('Andato in onda · in arrivo sul server', 'Aired · coming to the server');
+        } else if (at != null) {
+          status = _tr('In onda alle ${timeFmt.format(at)}', 'Airs at ${timeFmt.format(at)}');
+        } else {
+          status = _tr('Arriva sul server dopo la messa in onda', 'Reaches the server after it airs');
+        }
+        out.add(
+          MfCalendarEntry(
+            day: day,
+            kind: premiere ? MfCalendarKind.premiere : MfCalendarKind.episode,
+            tmdbId: _int(raw['tmdbId']) ?? 0,
+            tvdbId: _int(raw['tvdbId']),
+            title: title,
+            detail: 'S$season · E$episode$note${hideName ? '' : ' «$name»'}',
+            status: status,
+            statusColor: onServer ? mfGreen : null,
+            imageUrl: fanart,
+            posterUrl: poster,
+            onServer: onServer,
+            at: at,
+            requested: true,
+          ),
+        );
+      }
+    }
+    return out;
   }
 
   static Future<List<MfCalendarEntry>> _load(
@@ -327,7 +497,7 @@ abstract final class MaggioflixCalendarLoader {
 
 Future<void> _openEntry(BuildContext context, MfCalendarEntry entry) async {
   final source = context.read<CatalogSourcesProvider>().seerrSource;
-  if (source == null) return;
+  if (source == null || entry.tmdbId <= 0) return;
   final found = await source.maggioflixRequestedItem(entry.mediaKind, entry.tmdbId).catchError((Object e) {
     appLogger.w('MaggioFlix: scheda del calendario non disponibile', error: e);
     return null;
@@ -349,35 +519,42 @@ String _dayHeading(DateTime day) {
   final weekday = DateFormat.EEEE(_locale).format(day);
   final dayLabel = '$weekday ${day.day}';
   if (day == today) return _tr('Oggi · $dayLabel', 'Today · $dayLabel').toUpperCase();
-  if (day == today.add(const Duration(days: 1))) return _tr('Domani · $dayLabel', 'Tomorrow · $dayLabel').toUpperCase();
+  if (day == DateTime(today.year, today.month, today.day + 1)) return _tr('Domani · $dayLabel', 'Tomorrow · $dayLabel').toUpperCase();
   return dayLabel.toUpperCase();
 }
 
+
 // ---------------------------------------------------------------------------
-// Telefono: scheda "Calendario"
+// Calendario mensile: griglia del mese e, sotto (o a destra), le uscite del giorno
 // ---------------------------------------------------------------------------
 
-enum _MfCalendarFilter { all, series, movies }
+const _mfBrandRed = Color(0xFFC9262B);
 
-class MaggioflixCalendarView extends StatefulWidget {
-  const MaggioflixCalendarView({super.key});
+class MfMonthCalendar extends StatefulWidget {
+  /// Griglia e lista affiancate (TV e PC); altrimenti una sotto l'altra.
+  final bool wide;
+
+  const MfMonthCalendar({super.key, this.wide = false});
 
   @override
-  State<MaggioflixCalendarView> createState() => _MaggioflixCalendarViewState();
+  State<MfMonthCalendar> createState() => MfMonthCalendarState();
 }
 
-class _MaggioflixCalendarViewState extends State<MaggioflixCalendarView> {
-  List<MfCalendarEntry>? _entries;
-  bool _failed = false;
-  int _week = 0;
-  _MfCalendarFilter _filter = _MfCalendarFilter.all;
-  final Map<DateTime, GlobalKey> _dayKeys = {};
+class MfMonthCalendarState extends State<MfMonthCalendar> {
+  late DateTime _month;
+  late DateTime _selected;
+  final Map<String, List<MfCalendarEntry>> _byRange = {};
+  final Set<String> _loading = {};
+  final Set<String> _failed = {};
 
   @override
   void initState() {
     super.initState();
+    final today = _day(DateTime.now());
+    _month = DateTime(today.year, today.month);
+    _selected = today;
     maggioflixRequestsChanged.addListener(_onRequestsChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_load()));
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(reload()));
   }
 
   @override
@@ -386,215 +563,364 @@ class _MaggioflixCalendarViewState extends State<MaggioflixCalendarView> {
     super.dispose();
   }
 
-  void _onRequestsChanged() => unawaited(_load(force: true));
+  void _onRequestsChanged() => unawaited(reload(force: true));
 
-  Future<void> _load({bool force = false}) async {
-    if (!mounted) return;
+  DateTime get _gridStart => DateTime(_month.year, _month.month, 1 - (_month.weekday - 1));
+  DateTime _gridDay(int index) => DateTime(_gridStart.year, _gridStart.month, _gridStart.day + index);
+  DateTime get _gridEnd => _gridDay(41);
+  String get _rangeKey => _ymd(_gridStart);
+
+  Future<void> reload({bool force = false}) async {
+    final key = _rangeKey;
+    final start = _gridStart;
+    final end = _gridEnd;
+    if (_loading.contains(key) || !mounted) return;
+    setState(() {
+      _loading.add(key);
+      _failed.remove(key);
+    });
     try {
-      final entries = await MaggioflixCalendarLoader.load(context, force: force);
+      final entries = await MaggioflixCalendarLoader.loadRange(context, start, end, force: force);
       if (!mounted) return;
-      setState(() {
-        _entries = entries;
-        _failed = false;
-      });
+      setState(() => _byRange[key] = entries);
     } catch (e) {
       appLogger.w('MaggioFlix: calendario non disponibile', error: e);
-      if (!mounted) return;
-      setState(() => _failed = _entries == null);
+      if (mounted) setState(() => _failed.add(key));
+    } finally {
+      if (mounted) setState(() => _loading.remove(key));
     }
   }
 
-  DateTime get _weekStart {
+  void _changeMonth(int delta) {
     final today = _day(DateTime.now());
-    return today.subtract(Duration(days: today.weekday - 1)).add(Duration(days: 7 * _week));
+    setState(() {
+      _month = DateTime(_month.year, _month.month + delta);
+      _selected = today.year == _month.year && today.month == _month.month ? today : _month;
+    });
+    unawaited(reload());
   }
 
-  bool _matches(MfCalendarEntry e) => switch (_filter) {
-    _MfCalendarFilter.all => true,
-    _MfCalendarFilter.series => !e.isMovie,
-    _MfCalendarFilter.movies => e.isMovie,
-  };
+  void _goToday() {
+    final today = _day(DateTime.now());
+    final sameMonth = today.year == _month.year && today.month == _month.month;
+    setState(() {
+      _month = DateTime(today.year, today.month);
+      _selected = today;
+    });
+    if (!sameMonth) unawaited(reload());
+  }
 
-  String _weekLabel(DateTime start) {
-    if (_week == 0) return _tr('Questa settimana', 'This week');
-    if (_week == 1) return _tr('Prossima settimana', 'Next week');
-    final end = start.add(const Duration(days: 6));
-    final fmt = DateFormat.MMMd(_locale);
-    return '${fmt.format(start)} – ${fmt.format(end)}';
+  void _select(DateTime day) {
+    if (day.month != _month.month || day.year != _month.year) {
+      setState(() {
+        _month = DateTime(day.year, day.month);
+        _selected = day;
+      });
+      unawaited(reload());
+      return;
+    }
+    if (day != _selected) setState(() => _selected = day);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.65);
-    final start = _weekStart;
-    final days = [for (var i = 0; i < 7; i++) start.add(Duration(days: i))];
-    final today = _day(DateTime.now());
-    final entries = (_entries ?? const <MfCalendarEntry>[]).where(_matches).toList();
+    final entries = _byRange[_rangeKey];
     final byDay = <DateTime, List<MfCalendarEntry>>{};
-    for (final e in entries) {
-      if (e.day.isBefore(start) || !e.day.isBefore(start.add(const Duration(days: 7)))) continue;
+    for (final e in entries ?? const <MfCalendarEntry>[]) {
       byDay.putIfAbsent(e.day, () => []).add(e);
     }
+    final grid = _buildGrid(theme, byDay, loading: entries == null && _loading.contains(_rangeKey));
+    final list = _buildDayList(theme, byDay[_selected] ?? const [], entries == null);
+    if (widget.wide) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(flex: 3, child: grid),
+          const SizedBox(width: 24),
+          Expanded(flex: 2, child: list),
+        ],
+      );
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [grid, const SizedBox(height: 18), list]);
+  }
 
-    Widget dayButton(DateTime d) {
-      final isToday = d == today;
-      final hasItems = byDay.containsKey(d);
-      final fg = isToday ? Colors.white : theme.colorScheme.onSurface;
-      return Expanded(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Material(
-            color: isToday ? const Color(0xFFC9262B) : theme.colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(14),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: hasItems
-                  ? () {
-                      final ctx = _dayKeys[d]?.currentContext;
-                      if (ctx != null) unawaited(Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 300)));
-                    }
-                  : null,
-              child: SizedBox(
-                height: 62,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      DateFormat.E(_locale).format(d),
-                      style: theme.textTheme.labelSmall?.copyWith(color: isToday ? fg : muted),
-                    ),
-                    Text(
-                      '${d.day}',
-                      style: theme.textTheme.titleMedium?.copyWith(color: fg, fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 2),
-                    Container(
-                      width: 5,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: hasItems ? (isToday ? Colors.white : muted) : Colors.transparent,
+  Widget _buildGrid(ThemeData theme, Map<DateTime, List<MfCalendarEntry>> byDay, {required bool loading}) {
+    final scheme = theme.colorScheme;
+    final muted = scheme.onSurface.withValues(alpha: 0.6);
+    final today = _day(DateTime.now());
+    final monthTitle = _capitalized(DateFormat.yMMMM(_locale).format(_month));
+    final monday = DateTime(2024, 1, 1);
+    final weekdays = [
+      for (var i = 0; i < 7; i++) _capitalized(DateFormat.E(_locale).format(DateTime(2024, 1, monday.day + i))),
+    ];
+
+    Widget legendDot(Color color, String label) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 9, height: 9, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 6),
+        Text(label, style: theme.textTheme.labelMedium?.copyWith(color: muted)),
+      ],
+    );
+
+    return GestureDetector(
+      onHorizontalDragEnd: widget.wide
+          ? null
+          : (details) {
+              final v = details.primaryVelocity ?? 0;
+              if (v < -250) _changeMonth(1);
+              if (v > 250) _changeMonth(-1);
+            },
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const SizedBox(width: 4),
+                const AppIcon(Symbols.calendar_month_rounded, fill: 1, size: 30, color: _mfBrandRed),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _tr('Calendario MaggioFlix', 'MaggioFlix calendar'),
+                        style: theme.textTheme.labelMedium?.copyWith(color: const Color(0xFFFF6B6B)),
                       ),
+                      Text(
+                        monthTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                ),
+                if (loading)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 4),
+                    child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                  ),
+                IconButton(
+                  tooltip: _tr('Mese precedente', 'Previous month'),
+                  onPressed: () => _changeMonth(-1),
+                  icon: const AppIcon(Symbols.chevron_left_rounded),
+                ),
+                IconButton(
+                  tooltip: _tr('Mese successivo', 'Next month'),
+                  onPressed: () => _changeMonth(1),
+                  icon: const AppIcon(Symbols.chevron_right_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                for (final w in weekdays)
+                  Expanded(
+                    child: Text(
+                      w,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.labelMedium?.copyWith(color: muted, fontWeight: FontWeight.w600),
                     ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            for (var week = 0; week < 6; week++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    for (var i = 0; i < 7; i++)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          child: Builder(
+                            builder: (context) {
+                              final day = _gridDay(week * 7 + i);
+                              return _MfDayCell(
+                                day: day,
+                                inMonth: day.month == _month.month,
+                                isToday: day == today,
+                                selected: day == _selected,
+                                entries: byDay[day] ?? const [],
+                                aspectRatio: widget.wide ? 1.35 : 0.92,
+                                autofocus: widget.wide && day == today,
+                                onTap: () => _select(day),
+                                onFocused: widget.wide && day.month == _month.month ? () => _select(day) : null,
+                              );
+                            },
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const SizedBox(width: 6),
+                legendDot(mfAmber, _tr('Film', 'Movies')),
+                const SizedBox(width: 16),
+                legendDot(mfCyan, _tr('Serie', 'Series')),
+                const Spacer(),
+                TextButton(onPressed: _goToday, child: Text(_tr('Oggi', 'Today'))),
+              ],
             ),
-          ),
+          ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    Widget chip(String label, _MfCalendarFilter value) =>
-        MfToggleChip(label: label, selected: _filter == value, onTap: () => setState(() => _filter = value));
-
+  Widget _buildDayList(ThemeData theme, List<MfCalendarEntry> entries, bool notLoaded) {
+    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.65);
     final children = <Widget>[
-      Row(
-        children: [
-          IconButton(
-            tooltip: _tr('Settimana precedente', 'Previous week'),
-            onPressed: _week > 0 ? () => setState(() => _week--) : null,
-            icon: const AppIcon(Symbols.chevron_left_rounded),
-          ),
-          Expanded(
-            child: Text(
-              _weekLabel(start),
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ),
-          IconButton(
-            tooltip: _tr('Settimana successiva', 'Next week'),
-            onPressed: _week < 5 ? () => setState(() => _week++) : null,
-            icon: const AppIcon(Symbols.chevron_right_rounded),
-          ),
-        ],
+      Padding(
+        padding: const EdgeInsets.only(left: 4, bottom: 10),
+        child: Text(
+          _dayHeading(_selected),
+          style: theme.textTheme.labelLarge?.copyWith(color: muted, fontWeight: FontWeight.w700, letterSpacing: 0.5),
+        ),
       ),
-      const SizedBox(height: 4),
-      Row(children: days.map(dayButton).toList()),
-      const SizedBox(height: 14),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          chip(_tr('Tutto', 'All'), _MfCalendarFilter.all),
-          chip(_tr('Serie', 'Series'), _MfCalendarFilter.series),
-          chip(_tr('Film richiesti', 'Requested movies'), _MfCalendarFilter.movies),
-        ],
-      ),
-      const SizedBox(height: 14),
     ];
-
-    if (_entries == null && !_failed) {
-      children.add(const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())));
-    } else if (_failed) {
+    if (notLoaded && _failed.contains(_rangeKey)) {
       children.add(
         Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(vertical: 16),
           child: Column(
             children: [
               Text(_tr('Impossibile caricare il calendario.', 'Could not load the calendar.')),
               const SizedBox(height: 12),
-              OutlinedButton(onPressed: () => unawaited(_load(force: true)), child: Text(t.common.retry)),
+              OutlinedButton(onPressed: () => unawaited(reload(force: true)), child: Text(t.common.retry)),
             ],
           ),
         ),
       );
-    } else if (byDay.isEmpty) {
+    } else if (notLoaded) {
+      children.add(const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())));
+    } else if (entries.isEmpty) {
       children.add(
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24),
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
           child: Text(
-            _tr('Nessuna uscita in questa settimana.', 'Nothing comes out this week.'),
-            textAlign: TextAlign.center,
+            _tr('Niente in uscita in questo giorno.', 'Nothing comes out on this day.'),
             style: theme.textTheme.bodyMedium?.copyWith(color: muted),
           ),
         ),
       );
     } else {
-      final sortedDays = byDay.keys.toList()..sort();
-      for (final d in sortedDays) {
-        final key = _dayKeys.putIfAbsent(d, GlobalKey.new);
-        children.add(
-          Padding(
-            key: key,
-            padding: const EdgeInsets.only(top: 6, bottom: 8),
-            child: Text(
-              _dayHeading(d),
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: muted,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-        );
-        for (final e in byDay[d]!) {
-          children.add(Padding(padding: const EdgeInsets.only(bottom: 10), child: _MfCalendarCard(entry: e)));
-        }
+      for (final e in entries) {
+        children.add(Padding(padding: const EdgeInsets.only(bottom: 10), child: _MfCalendarCard(entry: e)));
       }
     }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
+  }
+}
 
-    children.add(
-      Padding(
-        padding: const EdgeInsets.only(top: 12),
-        child: Text(
-          _tr(
-            'Qui trovi i prossimi episodi delle serie che guardi o hai richiesto e le uscite dei film che hai richiesto.',
-            'Upcoming episodes of the series you watch or requested, and release dates of the movies you requested.',
-          ),
-          style: theme.textTheme.bodySmall?.copyWith(color: muted),
+class _MfDayCell extends StatelessWidget {
+  final DateTime day;
+  final bool inMonth;
+  final bool isToday;
+  final bool selected;
+  final List<MfCalendarEntry> entries;
+  final double aspectRatio;
+  final bool autofocus;
+  final VoidCallback onTap;
+  final VoidCallback? onFocused;
+
+  const _MfDayCell({
+    required this.day,
+    required this.inMonth,
+    required this.isToday,
+    required this.selected,
+    required this.entries,
+    required this.aspectRatio,
+    required this.autofocus,
+    required this.onTap,
+    this.onFocused,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final base = scheme.surfaceContainerHighest;
+    final background = selected
+        ? _mfBrandRed.withValues(alpha: 0.9)
+        : (inMonth ? base.withValues(alpha: 0.75) : base.withValues(alpha: 0.3));
+    final numberColor = selected
+        ? Colors.white
+        : scheme.onSurface.withValues(alpha: inMonth ? 0.9 : 0.35);
+    final dots = entries.take(3).toList();
+    return AspectRatio(
+      aspectRatio: aspectRatio,
+      child: Material(
+        color: background,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: selected
+              ? const BorderSide(color: Colors.white, width: 2)
+              : (isToday ? const BorderSide(color: _mfBrandRed, width: 2) : BorderSide.none),
         ),
-      ),
-    );
-
-    return RefreshIndicator(
-      onRefresh: () => _load(force: true),
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        children: children,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          autofocus: autofocus,
+          onTap: onTap,
+          onFocusChange: onFocused == null
+              ? null
+              : (focused) {
+                  if (focused) onFocused!();
+                },
+          focusColor: Colors.white.withValues(alpha: 0.22),
+          child: Stack(
+            children: [
+              Positioned(
+                top: 5,
+                right: 8,
+                child: Text(
+                  '${day.day}',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: numberColor,
+                    fontWeight: selected || isToday ? FontWeight.w800 : FontWeight.w600,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+              if (dots.isNotEmpty)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 8,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      for (final e in dots)
+                        Container(
+                          width: 7,
+                          height: 7,
+                          margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: inMonth ? e.color : e.color.withValues(alpha: 0.45),
+                            border: selected ? Border.all(color: Colors.white, width: 1) : null,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -608,75 +934,125 @@ class _MfCalendarCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.65);
+    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.7);
+    final image = entry.posterUrl ?? entry.imageUrl;
+    final placeholder = ColoredBox(color: theme.colorScheme.surfaceContainerHighest);
+    final Widget trailing;
+    if (entry.seasonToRequest != null) {
+      trailing = FilledButton(
+        onPressed: () => _requestEntry(context, entry),
+        style: FilledButton.styleFrom(
+          backgroundColor: _mfBrandRed,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          visualDensity: VisualDensity.compact,
+        ),
+        child: Text(_tr('Richiedi', 'Request')),
+      );
+    } else {
+      final color = entry.onServer ? mfGreen : entry.color;
+      trailing = Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: 0.18)),
+        child: Center(
+          child: AppIcon(
+            entry.onServer ? Symbols.download_done_rounded : Symbols.schedule_rounded,
+            size: 22,
+            color: color,
+          ),
+        ),
+      );
+    }
     return Material(
-      color: theme.colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(14),
+      color: Color.alphaBlend(entry.color.withValues(alpha: 0.07), theme.colorScheme.surfaceContainerLow),
+      borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => unawaited(_openEntry(context, entry)),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
+        onTap: entry.tmdbId > 0 ? () => unawaited(_openEntry(context, entry)) : null,
+        child: IntrinsicHeight(
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 84,
-                  height: 48,
-                  child: entry.imageUrl == null
-                      ? ColoredBox(color: theme.colorScheme.surfaceContainerHighest)
-                      : Image.network(
-                          entry.imageUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stack) =>
-                              ColoredBox(color: theme.colorScheme.surfaceContainerHighest),
-                        ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      entry.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(entry.detail, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
-                    const SizedBox(height: 2),
-                    Text(
-                      entry.status,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: entry.statusColor ?? muted,
-                        fontWeight: entry.statusColor == null ? null : FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (entry.seasonToRequest != null) ...[
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: () => _requestEntry(context, entry),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFC9262B),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    visualDensity: VisualDensity.compact,
+              Container(width: 5, color: entry.color),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                    width: 54,
+                    height: 80,
+                    child: image == null
+                        ? placeholder
+                        : Image.network(image, fit: BoxFit.cover, errorBuilder: (_, _, _) => placeholder),
                   ),
-                  child: Text(_tr('Richiedi', 'Request')),
                 ),
-              ],
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        entry.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        entry.detail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        entry.status,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: entry.statusColor ?? muted,
+                          fontWeight: entry.statusColor == null ? null : FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Center(child: trailing)),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Telefono: scheda "Calendario" nelle Richieste
+// ---------------------------------------------------------------------------
+
+class MaggioflixCalendarView extends StatefulWidget {
+  const MaggioflixCalendarView({super.key});
+
+  @override
+  State<MaggioflixCalendarView> createState() => _MaggioflixCalendarViewState();
+}
+
+class _MaggioflixCalendarViewState extends State<MaggioflixCalendarView> {
+  final _calendar = GlobalKey<MfMonthCalendarState>();
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: () async => _calendar.currentState?.reload(force: true),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+        children: [MfMonthCalendar(key: _calendar)],
       ),
     );
   }
@@ -694,142 +1070,30 @@ class MaggioflixCalendarScreen extends StatefulWidget {
 }
 
 class _MaggioflixCalendarScreenState extends State<MaggioflixCalendarScreen> {
-  List<MfCalendarEntry>? _entries;
-  bool _failed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_load()));
-  }
-
-  Future<void> _load({bool force = false}) async {
-    if (!mounted) return;
-    try {
-      final entries = await MaggioflixCalendarLoader.load(context, force: force);
-      if (!mounted) return;
-      setState(() {
-        _entries = entries;
-        _failed = false;
-      });
-    } catch (e) {
-      appLogger.w('MaggioFlix: calendario non disponibile', error: e);
-      if (!mounted) return;
-      setState(() => _failed = _entries == null);
-    }
-  }
+  final _calendar = GlobalKey<MfMonthCalendarState>();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.65);
-    final autofocusFirst = InputModeTracker.isKeyboardMode(context);
-    final today = _day(DateTime.now());
-    final entries = (_entries ?? const <MfCalendarEntry>[])
-        .where((e) => e.day.isBefore(today.add(const Duration(days: 21))))
-        .toList();
-    final slivers = <Widget>[];
-    if (_entries == null && !_failed) {
-      slivers.add(const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator())));
-    } else if (_failed) {
-      slivers.add(
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_tr('Impossibile caricare il calendario.', 'Could not load the calendar.')),
-                const SizedBox(height: 12),
-                OutlinedButton(onPressed: () => unawaited(_load(force: true)), child: Text(t.common.retry)),
-              ],
-            ),
-          ),
-        ),
-      );
-    } else if (entries.isEmpty) {
-      slivers.add(
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Center(
-            child: Text(
-              _tr('Nessuna uscita nelle prossime tre settimane.', 'Nothing comes out in the next three weeks.'),
-              style: theme.textTheme.bodyLarge,
-            ),
-          ),
-        ),
-      );
-    } else {
-      DateTime? lastDay;
-      var index = 0;
-      final tiles = <Widget>[];
-      for (final e in entries) {
-        if (e.day != lastDay) {
-          lastDay = e.day;
-          tiles.add(
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 6),
-              child: Text(
-                _dayHeading(e.day),
-                style: theme.textTheme.labelLarge?.copyWith(color: muted, fontWeight: FontWeight.w700),
-              ),
-            ),
-          );
-        }
-        final first = index == 0;
-        index++;
-        tiles.add(
-          FocusableListTile(
-            autofocus: autofocusFirst && first,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
-            leading: ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: SizedBox(
-                width: 112,
-                height: 63,
-                child: e.imageUrl == null
-                    ? ColoredBox(color: theme.colorScheme.surfaceContainerHighest)
-                    : Image.network(
-                        e.imageUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stack) =>
-                            ColoredBox(color: theme.colorScheme.surfaceContainerHighest),
-                      ),
-              ),
-            ),
-            title: Text(e.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(e.detail),
-                Text(
-                  e.seasonToRequest == null ? e.status : '${e.status} · ${_tr('apri per richiederla', 'open to request it')}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: e.statusColor ?? muted,
-                    fontWeight: e.statusColor == null ? null : FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            onTap: () => unawaited(_openEntry(context, e)),
-          ),
-        );
-      }
-      slivers.add(SliverList(delegate: SliverChildListDelegate(tiles)));
-      slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 24)));
-    }
-
     return FocusedScrollScaffold(
       title: Text(maggioflixCalendarLabel()),
       actions: [
         IconButton(
           tooltip: t.common.refresh,
           icon: const AppIcon(Symbols.refresh_rounded, fill: 1),
-          onPressed: () => unawaited(_load(force: true)),
+          onPressed: () => unawaited(_calendar.currentState?.reload(force: true)),
         ),
       ],
-      slivers: slivers,
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+          sliver: SliverToBoxAdapter(
+            child: LayoutBuilder(
+              builder: (context, constraints) =>
+                  MfMonthCalendar(key: _calendar, wide: constraints.maxWidth >= 820),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
