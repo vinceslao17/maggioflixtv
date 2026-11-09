@@ -977,7 +977,7 @@ class _MfHeroCard extends StatelessWidget {
           showSeerrRequestSheet(context, source: seerr!, kind: item.kind, tmdbId: tmdbId, title: item.title),
         ),
         icon: const AppIcon(Symbols.playlist_add_rounded, size: 18),
-        label: Text(maggioflixMoreSeasonsLabel()),
+        label: Text(maggioflixRequestMoreLabel()),
       );
     } else if (requested) {
       primary = FilledButton.icon(
