@@ -15,7 +15,6 @@ Solo libreria standard di Python: nessuna dipendenza.
 
 from __future__ import annotations
 
-import http.cookiejar
 import json
 import logging
 import os
@@ -113,37 +112,50 @@ STATE = State()
 # ---------------------------------------------------------------------------
 
 class Qbit:
+    """Client minimo per la WebUI di qBittorrent (4.x e 5.x).
+
+    Il cookie di sessione si gestisce a mano: nelle versioni recenti si chiama
+    QBT_SID_<porta> e il login puo' rispondere senza testo (204).
+    """
+
     def __init__(self, url: str, user: str, password: str) -> None:
         self.url = url
         self.user = user
         self.password = password
-        self.jar = http.cookiejar.CookieJar()
-        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
+        self.cookie: str | None = None
 
     def _open(self, req: urllib.request.Request, timeout: float = 10):
         req.add_header("Referer", self.url + "/")
-        return self.opener.open(req, timeout=timeout)
+        req.add_header("Origin", self.url)
+        if self.cookie:
+            req.add_header("Cookie", self.cookie)
+        return urllib.request.urlopen(req, timeout=timeout)
 
     def login(self) -> None:
+        self.cookie = None
         if not self.user:
             return  # qBittorrent senza password per la rete locale
         data = urllib.parse.urlencode({"username": self.user, "password": self.password}).encode()
         req = urllib.request.Request(self.url + "/api/v2/auth/login", data=data, method="POST")
-        req.add_header("Origin", self.url)
         try:
             with self._open(req) as resp:
                 body = resp.read().decode(errors="replace").strip()
+                cookies = resp.headers.get_all("Set-Cookie") or []
         except urllib.error.HTTPError as e:
             if e.code == 403:
-                raise RuntimeError("qBittorrent ha bloccato l'IP del ponte (troppi tentativi falliti)") from None
+                raise RuntimeError("qBittorrent ha bloccato l'IP del ponte (troppi tentativi falliti): riavvia qbittorrent") from None
             if e.code == 401:
-                raise RuntimeError("qBittorrent rifiuta la richiesta (401): controlla 'Host header validation'") from None
+                raise RuntimeError("qBittorrent rifiuta la richiesta (401): controlla 'Host header validation' nella WebUI") from None
             raise
-        has_sid = any(c.name.upper() in ("SID", "QBT_SID") or c.name.upper().endswith("_SID") for c in self.jar)
         if body == "Fails.":
             raise RuntimeError("login qBittorrent rifiutato: utente o password sbagliati (QBIT_USER/QBIT_PASS)")
-        if body != "Ok." and not has_sid:
-            raise RuntimeError(f"login qBittorrent non riuscito: {body[:80]!r}")
+        for raw in cookies:
+            pair = raw.split(";", 1)[0].strip()
+            name = pair.split("=", 1)[0].upper()
+            if "SID" in name and "=" in pair:
+                self.cookie = pair
+        # Nessun cookie: va bene se qBittorrent non chiede la password a questa rete;
+        # lo dice la prima lettura dei dati.
 
     def get_json(self, path: str):
         for attempt in range(2):
@@ -154,6 +166,10 @@ class Qbit:
                 if e.code in (401, 403) and attempt == 0:
                     self.login()
                     continue
+                if e.code in (401, 403):
+                    raise RuntimeError(
+                        "qBittorrent non accetta il login del ponte: controlla QBIT_USER/QBIT_PASS"
+                    ) from None
                 raise
         return None
 
