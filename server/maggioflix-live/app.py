@@ -620,6 +620,129 @@ def session_ok(sid: str) -> bool:
     return ok
 
 
+# ---------------------------------------------------------------------------
+# Calendario e stagioni: letti al momento da Radarr/Sonarr (con una piccola cache)
+# ---------------------------------------------------------------------------
+
+_cache: dict[str, tuple[float, object]] = {}
+_cache_lock = threading.Lock()
+
+
+def cached(key: str, ttl: float, fn):
+    now = time.time()
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit and now - hit[0] < ttl:
+            return hit[1]
+    value = fn()
+    with _cache_lock:
+        if len(_cache) > 200:
+            _cache.clear()
+        _cache[key] = (now, value)
+    return value
+
+
+def _image(images, cover: str, size: str = "w342") -> str | None:
+    for img in images or []:
+        if img.get("coverType") == cover:
+            url = img.get("remoteUrl") or ""
+            if "image.tmdb.org/t/p/original/" in url:
+                url = url.replace("/t/p/original/", f"/t/p/{size}/")
+            return url or None
+    return None
+
+
+def _date_only(value) -> str | None:
+    return str(value)[:10] if value else None
+
+
+def build_calendar(start: str, end: str) -> dict:
+    """Uscite dei film (cinema, digitale, fisico) ed episodi delle serie seguite."""
+    items: dict[tuple, dict] = {}
+    errors = 0
+    query = urllib.parse.urlencode({"start": start, "end": end, "unmonitored": "false"})
+    for kind, is4k, url, key in ARRS:
+        try:
+            if kind == "movie":
+                rows = arr_get(url, key, f"/api/v3/calendar?{query}") or []
+                for m in rows:
+                    tmdb = _int(m.get("tmdbId"))
+                    for release, field in (("cinema", "inCinemas"), ("digital", "digitalRelease"),
+                                           ("physical", "physicalRelease")):
+                        day = _date_only(m.get(field))
+                        if not day or not (start <= day <= end):
+                            continue
+                        k = ("movie", tmdb or m.get("title"), release, day)
+                        item = items.get(k)
+                        if item is None:
+                            items[k] = {
+                                "type": "movie", "tmdbId": tmdb, "title": m.get("title") or "",
+                                "year": _int(m.get("year")), "date": day, "release": release,
+                                "hasFile": bool(m.get("hasFile")),
+                                "poster": _image(m.get("images"), "poster"),
+                                "fanart": _image(m.get("images"), "fanart", "w780"),
+                            }
+                        else:
+                            item["hasFile"] = item["hasFile"] or bool(m.get("hasFile"))
+            else:
+                rows = arr_get(url, key, f"/api/v3/calendar?{query}&includeSeries=true") or []
+                for e in rows:
+                    series = e.get("series") or {}
+                    tvdb = _int(series.get("tvdbId"))
+                    season = _int(e.get("seasonNumber"))
+                    number = _int(e.get("episodeNumber"))
+                    k = ("tv", tvdb or series.get("title"), season, number)
+                    item = items.get(k)
+                    if item is None:
+                        items[k] = {
+                            "type": "tv", "tmdbId": _int(series.get("tmdbId")) or None, "tvdbId": tvdb,
+                            "title": series.get("title") or "", "date": _date_only(e.get("airDate")),
+                            "airUtc": e.get("airDateUtc"), "season": season, "episode": number,
+                            "episodeTitle": e.get("title") or "", "hasFile": bool(e.get("hasFile")),
+                            "finale": e.get("finaleType"), "network": series.get("network"),
+                            "poster": _image(series.get("images"), "poster"),
+                            "fanart": _image(series.get("images"), "fanart"),
+                        }
+                    else:
+                        item["hasFile"] = item["hasFile"] or bool(e.get("hasFile"))
+        except Exception as e:  # noqa: BLE001
+            errors += 1
+            log.warning("Calendario: %s non raggiungibile: %s", url, e)
+    ordered = sorted(items.values(), key=lambda i: (i.get("airUtc") or i.get("date") or "", i.get("title") or ""))
+    return {"start": start, "end": end, "items": ordered, "errors": errors}
+
+
+def _all_series(url: str, key: str) -> list:
+    return cached(f"series:{url}", 60, lambda: arr_get(url, key, "/api/v3/series") or [])
+
+
+def build_series(tmdb: int | None, tvdb: int | None) -> dict:
+    """Stagioni di una serie su Sonarr: quanti episodi sono gia' sul server."""
+    for kind, is4k, url, key in sorted(ARRS, key=lambda a: a[1]):
+        if kind != "tv":
+            continue
+        try:
+            rows = _all_series(url, key)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Sonarr non raggiungibile (%s): %s", url, e)
+            continue
+        for s in rows:
+            if (tvdb and _int(s.get("tvdbId")) == tvdb) or (tmdb and _int(s.get("tmdbId")) == tmdb):
+                seasons = []
+                for season in s.get("seasons") or []:
+                    stats = season.get("statistics") or {}
+                    seasons.append({
+                        "season": _int(season.get("seasonNumber")),
+                        "monitored": bool(season.get("monitored")),
+                        "files": _int(stats.get("episodeFileCount")) or 0,
+                        "aired": _int(stats.get("episodeCount")) or 0,
+                        "total": _int(stats.get("totalEpisodeCount")) or 0,
+                    })
+                return {"found": True, "is4k": is4k, "monitored": bool(s.get("monitored")),
+                        "tvdbId": _int(s.get("tvdbId")), "tmdbId": _int(s.get("tmdbId")), "seasons": seasons}
+    return {"found": False, "seasons": []}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "MaggioFlixLive/1"
 
@@ -646,12 +769,35 @@ class Handler(BaseHTTPRequestHandler):
                     "lastMap": round(time.time() - STATE.last_map, 1) if STATE.last_map else None,
                 })
             return
-        if path == "/api/live":
+        if path.startswith("/api/"):
             sid = self.headers.get("X-Seerr-Session", "")
             if not session_ok(sid):
                 self._send(401, {"error": "unauthorized"})
                 return
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+
+        def arg(name: str) -> str:
+            return (query.get(name) or [""])[0].strip()
+
+        if path == "/api/live":
             self._send(200, build_snapshot())
+            return
+        if path == "/api/calendar":
+            start, end = arg("start")[:10], arg("end")[:10]
+            try:
+                datetime.strptime(start, "%Y-%m-%d")
+                datetime.strptime(end, "%Y-%m-%d")
+            except ValueError:
+                self._send(400, {"error": "start/end: YYYY-MM-DD"})
+                return
+            self._send(200, cached(f"cal:{start}:{end}", 120, lambda: build_calendar(start, end)))
+            return
+        if path == "/api/series":
+            tmdb, tvdb = _int(arg("tmdb")), _int(arg("tvdb"))
+            if not tmdb and not tvdb:
+                self._send(400, {"error": "tmdb o tvdb"})
+                return
+            self._send(200, build_series(tmdb, tvdb))
             return
         self._send(404, {"error": "not found"})
 
