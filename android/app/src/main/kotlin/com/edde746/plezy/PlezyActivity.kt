@@ -977,6 +977,8 @@ class PlezyActivity : FlutterActivity() {
     externalPlayerChannel.attach(flutterEngine.dartExecutor.binaryMessenger)
     userCertificateChannel.attach(flutterEngine.dartExecutor.binaryMessenger)
     appIconChannel.attach(flutterEngine.dartExecutor.binaryMessenger)
+    // MaggioFlix: "È disponibile" notifications for the user's Seerr requests.
+    com.edde746.plezy.maggioflix.MaggioflixAvailability.attach(this, flutterEngine.dartExecutor.binaryMessenger)
 
     // Splash screen theme: persist user's chosen theme for next launch (API 31+)
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, THEME_CHANNEL).setMethodCallHandler { call, result ->

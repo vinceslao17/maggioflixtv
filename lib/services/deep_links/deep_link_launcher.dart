@@ -22,6 +22,7 @@ import '../catalog/plex_catalog_source.dart';
 import '../data_aggregation_service.dart';
 import '../media_list_playback_launcher.dart';
 import 'deep_link.dart';
+import '../../maggioflix/requests.dart';
 
 /// How long a link waits for the server it needs to come online, e.g. while
 /// the app reconnects after the device woke up.
@@ -37,6 +38,8 @@ Future<void> launchDeepLink(BuildContext context, DeepLink link, {required bool 
       await _launchPlayLink(context, link, isOffline: isOffline);
     case LiveLink():
       await _launchLiveLink(context, link, isOffline: isOffline);
+    case RequestsLink():
+      openMaggioflixRequests(context);
   }
 }
 

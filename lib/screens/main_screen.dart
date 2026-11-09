@@ -24,6 +24,7 @@ import '../widgets/auth_error_banner.dart';
 import '../widgets/app_icon.dart';
 import '../utils/iphone_duo.dart';
 import '../utils/platform_detector.dart';
+import '../maggioflix/availability.dart';
 import '../utils/snackbar_helper.dart';
 import '../utils/update_dialog.dart';
 import '../utils/video_player_navigation.dart';
@@ -642,6 +643,11 @@ class _MainScreenState extends State<MainScreen>
       // Links act once the profile is settled and its preferences are loaded.
       _attachDeepLinks();
 
+      // MaggioFlix: "È disponibile" notifications for the user's requests.
+      if (mounted && _maggioflixAvailability == null) {
+        _maggioflixAvailability = MaggioflixAvailabilityController(this)..start();
+      }
+
       // Focus content initially (replaces autofocus which caused focus stealing issues)
       // Skip if profile selection is on top — it manages its own focus. A
       // session remounted under the root picker (another profile chosen)
@@ -867,6 +873,7 @@ class _MainScreenState extends State<MainScreen>
   }
 
   DeepLinkSession? _deepLinkSession;
+  MaggioflixAvailabilityController? _maggioflixAvailability;
 
   /// Acts on `plezy://` links for this profile session ([DeepLinkService]).
   void _attachDeepLinks() {
@@ -1056,6 +1063,7 @@ class _MainScreenState extends State<MainScreen>
 
   @override
   void dispose() {
+    _maggioflixAvailability?.dispose();
     if (_watchTogether?.navigatorOpener == _navigateToWatchTogetherMedia) _watchTogether?.navigatorOpener = null;
     WidgetsBinding.instance.removeObserver(this);
     _profileRouteObserver?.unsubscribe(this);
@@ -1144,6 +1152,7 @@ class _MainScreenState extends State<MainScreen>
     // content. A grant must recover hidden Request actions on any real resume.
     if (resumedFromBackground && mounted) {
       unawaited(context.read<SeerrAccountProvider?>()?.refreshUser());
+      _maggioflixAvailability?.onResume();
     }
     if (shouldShowProfileSelectionOnResume(
       resumedFromBackground: resumedFromBackground,

@@ -47,6 +47,7 @@ sealed class DeepLink {
     final profile = _param(params, 'profile');
     return switch (uri.host.toLowerCase()) {
       OpenLink.host => OpenLink(profile: profile),
+      RequestsLink.host => RequestsLink(profile: profile),
       PlayLink.host => PlayLink._parse(params, profile),
       LiveLink.host => LiveLink._parse(params, profile),
       ExternalPlayerReturnLink.host => ExternalPlayerReturnLink(uri),
@@ -68,6 +69,17 @@ final class OpenLink extends DeepLink {
   const OpenLink({super.profile});
 
   static const host = 'open';
+
+  @override
+  Uri toUri() => DeepLink._uri(host, _profileParam);
+}
+
+/// `maggioflix://requests`: open "Le mie richieste" (MaggioFlix, used by the
+/// "È disponibile" notifications).
+final class RequestsLink extends DeepLink {
+  const RequestsLink({super.profile});
+
+  static const host = 'requests';
 
   @override
   Uri toUri() => DeepLink._uri(host, _profileParam);

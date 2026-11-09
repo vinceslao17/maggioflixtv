@@ -29,6 +29,7 @@ import 'overlay_sheet.dart';
 import 'stat_chip.dart';
 import '../maggioflix_config.dart';
 import '../maggioflix/requests.dart';
+import '../maggioflix/availability.dart';
 
 /// Why the sheet closed itself; a caller surfaces it on its own scaffold
 /// since the sheet is unmounting.
@@ -531,6 +532,8 @@ class _SeerrRequestSheetState extends State<SeerrRequestSheet> {
       OverlaySheetController.closeAdaptive(context);
       maggioflixRequestsChanged.value++;
       showSuccessSnackBar(context, t.seerr.requestSubmitted);
+      // MaggioFlix: the "È disponibile" notification needs the permission on Android 13+.
+      unawaited(MaggioflixAvailability.ensurePermission());
       return;
     } on SeerrApiException catch (e) {
       errorText = e.message;
