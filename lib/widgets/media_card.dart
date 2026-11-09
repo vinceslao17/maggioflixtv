@@ -647,7 +647,7 @@ class MediaCardState extends State<MediaCard> with ContextMenuTapMixin<MediaCard
     );
     final overlays = <Widget>[
       if (item is MediaItem && _showsWatchedIndicator(item)) WatchedIndicator(item: item),
-      if (badgeLabels.isNotEmpty) _CatalogBadges(labels: badgeLabels, item: catalogItem),
+      if (badgeLabels.isNotEmpty) _CatalogBadges(labels: badgeLabels, item: _catalogItem),
     ];
     return ExcludeSemantics(
       child: _CatalogFocusBorder(
