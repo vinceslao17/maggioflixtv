@@ -62,6 +62,7 @@ import '../widgets/settings_section.dart';
 import '../widgets/stat_chip.dart';
 import '../maggioflix_config.dart';
 import '../maggioflix/requests.dart';
+import '../maggioflix/live.dart';
 
 /// Detail screen for a catalog item (Explore tab). Renders from provider
 /// data — no media server required — and resolves library availability in
@@ -104,6 +105,12 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
   bool _mutatingWatchlist = false;
 
   CatalogItem? _detailItem;
+
+  // MaggioFlix Live: download in corso di questo titolo.
+  VoidCallback? _mfReleaseLive;
+  bool _mfLivePresent = false;
+  bool _mfFinishing = false;
+  Timer? _mfReloadTimer;
 
   /// The connected trackers' scores, merged as they arrive; empty until then.
   List<MediaRatingSource> _communityRatings = const [];
@@ -150,6 +157,11 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
     unawaited(_loadDetail());
     if (isTvosRunner) unawaited(_checkYouTubeApp());
     final sources = context.read<CatalogSourcesProvider>();
+    if (sources.seerrSource != null && widget.item.ids.tmdb != null) {
+      _mfReleaseLive = MaggioflixLive.instance.watch(sources.seerrSource);
+      MaggioflixLive.instance.addListener(_onMfLive);
+      _mfLivePresent = _mfLiveItem() != null;
+    }
     _watchlistSource = sources.watchlistSourceFor(widget.item);
     final source = _watchlistSource;
     if (source != null) {
@@ -163,8 +175,50 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
     });
   }
 
+  MfLiveItem? _mfLiveItem() {
+    final item = _item;
+    final tmdbId = item.ids.tmdb;
+    if (tmdbId == null) return null;
+    return MaggioflixLive.instance.itemFor(item.kind, tmdbId: tmdbId) ??
+        MaggioflixLive.instance.itemFor(item.kind, tmdbId: tmdbId, is4k: true);
+  }
+
+  /// Compare o sparisce il download: la pillola cambia. Quando finisce, la
+  /// scheda si ricarica ogni 30 s finché Seerr non lo segna disponibile.
+  void _onMfLive() {
+    if (!mounted) return;
+    final present = _mfLiveItem() != null;
+    if (present == _mfLivePresent) return;
+    final finished = _mfLivePresent && !present && MaggioflixLive.instance.reachable;
+    setState(() {
+      _mfLivePresent = present;
+      if (present) _mfFinishing = false;
+      if (finished) _mfFinishing = true;
+    });
+    if (finished) {
+      _mfReloadTimer?.cancel();
+      var attempts = 0;
+      _mfReloadTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
+        attempts++;
+        await _loadDetail();
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        final available = _item.serverState?.availability == CatalogAvailability.available;
+        if (available || attempts >= 20) {
+          timer.cancel();
+          setState(() => _mfFinishing = false);
+        }
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _mfReloadTimer?.cancel();
+    MaggioflixLive.instance.removeListener(_onMfLive);
+    _mfReleaseLive?.call();
     _backButtonFocusNode.dispose();
     _spoilerTagFocusNode.dispose();
     _overviewFocusNode.dispose();
@@ -1541,41 +1595,17 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
                                                       : t.explore.addToWatchlist,
                                                   onPressed: () => unawaited(_toggleWatchlist()),
                                                 ),
-                                              if (_requestSource != null && tmdbId != null && (mfAvailable || mfRequested))
+                                              if (_requestSource != null &&
+                                                  tmdbId != null &&
+                                                  (mfAvailable || mfRequested || _mfLivePresent || _mfFinishing))
                                                 FocusableAction(
                                                   debugLabel: 'catalog_request_state',
-                                                  builder: (context, state) => Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                                                    decoration: BoxDecoration(
-                                                      borderRadius: BorderRadius.circular(24),
-                                                      border: Border.all(
-                                                        color: (mfAvailable ? Colors.green : Colors.lightBlueAccent)
-                                                            .withValues(alpha: 0.7),
-                                                      ),
-                                                    ),
-                                                    child: Row(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        AppIcon(
-                                                          mfAvailable
-                                                              ? Symbols.check_circle_rounded
-                                                              : Symbols.schedule_rounded,
-                                                          fill: 1,
-                                                          size: 20,
-                                                          color: mfAvailable ? Colors.green : Colors.lightBlueAccent,
-                                                        ),
-                                                        const SizedBox(width: 8),
-                                                        Text(
-                                                          mfAvailable
-                                                              ? maggioflixAvailableLabel()
-                                                              : maggioflixRequestedLabel(),
-                                                          style: theme.textTheme.titleSmall?.copyWith(
-                                                            color: mfAvailable ? Colors.green : Colors.lightBlueAccent,
-                                                            fontWeight: FontWeight.w600,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
+                                                  builder: (context, state) => MaggioflixLiveStatusPill(
+                                                    kind: item.kind,
+                                                    tmdbId: tmdbId,
+                                                    available: mfAvailable,
+                                                    finishing: _mfFinishing,
+                                                    focused: state.showFocus,
                                                   ),
                                                 )
                                               else if (_requestSource case final SeerrCatalogSource seerr

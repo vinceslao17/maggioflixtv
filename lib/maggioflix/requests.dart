@@ -3,6 +3,7 @@
 library;
 
 import 'dart:async';
+import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -1549,6 +1550,214 @@ class _MfRequestCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pillola di stato nella scheda di un titolo
+// ---------------------------------------------------------------------------
+
+/// Disponibile, Richiesto oppure, col ponte MaggioFlix Live, il download in
+/// corso: la pillola si riempie man mano, con velocità e tempo che manca.
+class MaggioflixLiveStatusPill extends StatefulWidget {
+  final MediaKind kind;
+  final int? tmdbId;
+  final bool available;
+
+  /// Download appena finito: in arrivo sul server.
+  final bool finishing;
+
+  /// Messa a fuoco col telecomando.
+  final bool focused;
+
+  const MaggioflixLiveStatusPill({
+    super.key,
+    required this.kind,
+    required this.tmdbId,
+    required this.available,
+    this.finishing = false,
+    this.focused = false,
+  });
+
+  @override
+  State<MaggioflixLiveStatusPill> createState() => _MaggioflixLiveStatusPillState();
+}
+
+class _MaggioflixLiveStatusPillState extends State<MaggioflixLiveStatusPill> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    MaggioflixLive.instance.addListener(_changed);
+    // Tra un aggiornamento e l'altro la barra e il tempo avanzano da soli.
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_live?.isDownloading ?? false) _changed();
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    MaggioflixLive.instance.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  MfLiveItem? get _live {
+    final tmdbId = widget.tmdbId;
+    if (widget.available || tmdbId == null) return null;
+    return MaggioflixLive.instance.itemFor(widget.kind, tmdbId: tmdbId) ??
+        MaggioflixLive.instance.itemFor(widget.kind, tmdbId: tmdbId, is4k: true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final locale = LocaleSettings.currentLocale.intlLocaleName;
+    final now = DateTime.now();
+    final live = _live;
+
+    Color accent;
+    IconData icon;
+    String title;
+    String? subtitle;
+    double? fill;
+
+    if (widget.available) {
+      accent = Colors.green;
+      icon = Symbols.check_circle_rounded;
+      title = maggioflixAvailableLabel();
+    } else if (live != null) {
+      accent = const Color(0xFF4FC3F7);
+      final progress = live.progressAt(now);
+      final pct = '${NumberFormat('0', locale).format((progress * 100).floorToDouble())}%';
+      fill = live.isImporting ? 1.0 : progress;
+      icon = switch (live.state) {
+        'downloading' => Symbols.downloading_rounded,
+        'stalled' => Symbols.travel_explore_rounded,
+        'queued' => Symbols.schedule_rounded,
+        'checking' => Symbols.sync_rounded,
+        'metadata' => Symbols.hourglass_top_rounded,
+        'paused' => Symbols.pause_circle_rounded,
+        'error' => Symbols.error_rounded,
+        _ => Symbols.move_to_inbox_rounded,
+      };
+      if (live.isDownloading) {
+        final remaining = live.remainingAt(now);
+        title = '${_tr('In download', 'Downloading')} · $pct';
+        subtitle = [
+          if (live.speed > 0) _formatSpeed(live.speed.toDouble(), locale),
+          if (remaining != null) _tr('mancano ${_formatDuration(remaining)}', '${_formatDuration(remaining)} left'),
+          if (live.episodes > 1) _tr('${live.episodes} episodi', '${live.episodes} episodes'),
+        ].join(' · ');
+      } else if (live.isImporting) {
+        title = _tr('Scaricato', 'Downloaded');
+        subtitle = _tr('In importazione sul server', 'Importing to the server');
+      } else {
+        title = '${live.stateLabel} · $pct';
+        subtitle = live.state == 'stalled'
+            ? _tr('${live.seeds} fonti · ${live.peers} peer', '${live.seeds} seeds · ${live.peers} peers')
+            : null;
+      }
+      if (subtitle != null && subtitle.isEmpty) subtitle = null;
+    } else if (widget.finishing) {
+      accent = Colors.green;
+      icon = Symbols.check_circle_rounded;
+      title = _tr('Scaricato', 'Downloaded');
+      subtitle = _tr('Arriva sul server tra poco', 'Reaching the server soon');
+      fill = 1.0;
+    } else {
+      accent = Colors.lightBlueAccent;
+      icon = Symbols.schedule_rounded;
+      title = maggioflixRequestedLabel();
+    }
+
+    const tabular = [FontFeature.tabularFigures()];
+    final content = Padding(
+      padding: EdgeInsets.symmetric(horizontal: 18, vertical: subtitle == null ? 10 : 7),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppIcon(icon, fill: 1, size: 20, color: accent),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: tabular,
+                  ),
+                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                      fontFeatures: tabular,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return Semantics(
+      label: subtitle == null ? title : '$title, $subtitle',
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        constraints: BoxConstraints(minHeight: 44, minWidth: fill != null ? 210 : 0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: widget.focused ? theme.colorScheme.onSurface : accent.withValues(alpha: 0.7),
+            width: widget.focused ? 2 : 1,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(23),
+          child: Stack(
+            children: [
+              if (fill != null)
+                Positioned.fill(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: AnimatedFractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      duration: const Duration(milliseconds: 1000),
+                      curve: Curves.linear,
+                      widthFactor: fill.clamp(0.03, 1.0).toDouble(),
+                      heightFactor: 1,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [accent.withValues(alpha: 0.14), accent.withValues(alpha: 0.34)],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ExcludeSemantics(child: content),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
