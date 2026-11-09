@@ -6,6 +6,11 @@ tempo che manca dei download, aggiornati ogni secondo.
 - Legge qBittorrent una volta al secondo (`/api/v2/sync/maindata`, incrementale).
 - Chiede a Radarr/Sonarr (coda e storico dei "grabbed") quale torrent è quale film o
   episodio, ogni 10 secondi.
+- Usa i numeri di qBittorrent così come sono (avanzamento, velocità, ETA).
+- Se Radarr/Sonarr non rispondono per un attimo tiene l'ultimo abbinamento; un torrent
+  abbinato resta abbinato per 2 giorni.
+- Segnala anche i titoli importati da poco (ultimi 90 minuti) con stato `imported`,
+  così l'app sa che sono sul server prima che lo dica Seerr.
 - All'app manda solo numeri per titolo (TMDB/TVDB): niente nomi di torrent, nessun comando.
 - Risponde solo a chi ha una sessione Seerr valida (header `X-Seerr-Session`).
 

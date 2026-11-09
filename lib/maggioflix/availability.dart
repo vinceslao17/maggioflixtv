@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../i18n/strings.g.dart';
+import '../maggioflix_config.dart';
 import '../models/seerr/seerr_session.dart';
 import '../providers/seerr_account_provider.dart';
 import '../services/deep_links/deep_link_service.dart';
@@ -16,6 +17,7 @@ import '../utils/dialogs.dart';
 import '../utils/notification_permission.dart';
 import '../utils/platform_detector.dart';
 import '../widgets/dialog_action_button.dart';
+import 'live.dart';
 import 'requests.dart';
 
 bool get _isItalian => LocaleSettings.currentLocale.languageCode == 'it';
@@ -74,6 +76,7 @@ abstract final class MaggioflixAvailability {
         'baseUrl': session?.baseUrl,
         'cookie': session?.cookie,
         'userId': session?.userId,
+        'liveUrl': maggioflixLiveUrl,
       });
     } catch (e) {
       appLogger.w('MaggioFlix: availability configure failed', error: e);
@@ -105,6 +108,17 @@ abstract final class MaggioflixAvailability {
     }
   }
 
+  /// After a request: check every 2 minutes for a while, so the notification
+  /// arrives as soon as the title is on the server.
+  static Future<void> requestMade() async {
+    if (!supported) return;
+    try {
+      await _channel.invokeMethod<bool>('requestMade');
+    } catch (e) {
+      appLogger.w('MaggioFlix: availability fast mode failed', error: e);
+    }
+  }
+
   /// Asks for the notification permission (Android 13+) the first time it matters:
   /// right after the user sends a request.
   static Future<void> ensurePermission() async {
@@ -129,12 +143,25 @@ class MaggioflixAvailabilityController {
     if (!MaggioflixAvailability.supported || !_state.mounted) return;
     _seerr = _state.context.read<SeerrAccountProvider?>();
     _seerr?.addListener(_onSeerrChanged);
+    MaggioflixLive.instance.addListener(_onLive);
     _onSeerrChanged();
   }
 
   void dispose() {
     _disposed = true;
     _seerr?.removeListener(_onSeerrChanged);
+    MaggioflixLive.instance.removeListener(_onLive);
+  }
+
+  /// Con l'app aperta: appena il ponte vede un titolo arrivato sul server,
+  /// si controlla subito (la notifica parte senza aspettare Seerr).
+  int _lastImportedCount = 0;
+
+  void _onLive() {
+    final count = MaggioflixLive.instance.importedCount;
+    final grew = count > _lastImportedCount;
+    _lastImportedCount = count;
+    if (grew) unawaited(_check());
   }
 
   void onResume() => unawaited(_check());

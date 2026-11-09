@@ -116,6 +116,9 @@ class MfRequest {
   final MediaKind kind;
   final int? tmdbId;
   final int? tvdbId;
+
+  /// Chi l'ha richiesto (nome visualizzato su Seerr).
+  final String? requestedBy;
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final List<int> seasons;
@@ -136,6 +139,7 @@ class MfRequest {
     required this.kind,
     required this.tmdbId,
     this.tvdbId,
+    this.requestedBy,
     required this.createdAt,
     this.updatedAt,
     required this.seasons,
@@ -157,6 +161,15 @@ class MfRequest {
       kind: type == 'tv' ? MediaKind.show : MediaKind.movie,
       tmdbId: _int(media['tmdbId']),
       tvdbId: _int(media['tvdbId']),
+      requestedBy: switch (json['requestedBy']) {
+        final Map<String, dynamic> u => [
+          u['displayName'],
+          u['plexUsername'],
+          u['jellyfinUsername'],
+          u['username'],
+        ].whereType<String>().where((n) => n.trim().isNotEmpty).firstOrNull,
+        _ => null,
+      },
       createdAt: DateTime.tryParse('${json['createdAt'] ?? ''}')?.toLocal(),
       updatedAt: DateTime.tryParse('${json['updatedAt'] ?? ''}')?.toLocal(),
       seasons: [
@@ -180,8 +193,13 @@ class MfRequest {
   MfLiveItem? get live =>
       isAvailable ? null : MaggioflixLive.instance.itemFor(kind, tmdbId: tmdbId, tvdbId: tvdbId, is4k: is4k);
 
-  /// C'è un download in corso (dal ponte o da Seerr).
-  bool get isDownloading => live != null || downloads.isNotEmpty;
+  /// C'è un download in corso: dal ponte (qBittorrent) quando risponde,
+  /// altrimenti da Seerr. Mai i due mischiati, così i numeri non saltano.
+  bool get isDownloading =>
+      (live?.isActive ?? false) || (!MaggioflixLive.instance.reachable && downloads.isNotEmpty);
+
+  /// Arrivato sul server (importato da Radarr/Sonarr), Plex lo sta aggiungendo.
+  bool get isImported => live?.isImported ?? false;
 
   /// Richiesta ancora aperta: in attesa, approvata o in download.
   bool get isInProgress => !isAvailable && (status == 1 || status == 2 || downloads.isNotEmpty);
@@ -552,17 +570,32 @@ class _MaggioflixQuotaBannerState extends State<MaggioflixQuotaBanner> {
 /// Elenco delle richieste dell'utente, condiviso da pagina TV/PC e scheda del
 /// telefono. Si aggiorna da solo: ogni 5 s se qualcosa è in corso, altrimenti
 /// ogni 30 s, e subito dopo ogni nuova richiesta.
+enum MfRequestsScope { mine, all }
+
 class MfRequestsController extends ChangeNotifier {
-  MfRequestsController() {
+  MfRequestsController({this.scope = MfRequestsScope.mine, this.follow}) {
     maggioflixRequestsChanged.addListener(silentReload);
     _poll = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!pollingEnabled) return;
+      if (!pollingEnabled || !(follow?.pollingEnabled ?? true)) return;
       _ticks++;
       if (hasActive || _ticks % 6 == 0) silentReload();
     });
   }
 
   static const pageSize = 30;
+
+  /// Le mie richieste o quelle di tutti.
+  final MfRequestsScope scope;
+
+  /// Si aggiorna da solo solo quando si aggiorna anche questo (stessa pagina).
+  final MfRequestsController? follow;
+
+  SeerrCatalogSource? get source => _source;
+
+  Future<Map<String, dynamic>?> _fetch(SeerrCatalogSource source, {required int take, int skip = 0}) =>
+      scope == MfRequestsScope.mine
+      ? source.client.getUserRequests(source.client.session.userId, take: take, skip: skip)
+      : source.client.getAllRequests(take: take, skip: skip);
 
   /// Aggiornamento automatico attivo (spento quando la scheda non si vede).
   bool pollingEnabled = true;
@@ -632,7 +665,7 @@ class MfRequestsController extends ChangeNotifier {
     try {
       final loaded = requests.length;
       final take = !silent || loaded < pageSize ? pageSize : (loaded > 200 ? 200 : loaded);
-      final json = await source.client.getUserRequests(source.client.session.userId, take: take);
+      final json = await _fetch(source, take: take);
       if (_disposed || generation != _generation) return;
       final results = json?['results'];
       final pageInfo = json?['pageInfo'];
@@ -664,7 +697,7 @@ class MfRequestsController extends ChangeNotifier {
     loadingMore = true;
     _notify();
     try {
-      final json = await source.client.getUserRequests(source.client.session.userId, take: pageSize, skip: requests.length);
+      final json = await _fetch(source, take: pageSize, skip: requests.length);
       if (_disposed) return;
       final results = json?['results'];
       requests = [
@@ -830,6 +863,9 @@ _StatusInfo _statusOf(MfRequest r, ThemeData theme) {
       return _StatusInfo(_tr('Non riuscita', 'Failed'), Symbols.error_rounded, theme.colorScheme.error);
   }
   final live = r.live;
+  if (live != null && live.isImported) {
+    return _StatusInfo(live.stateLabel, Symbols.check_circle_rounded, Colors.lightGreen);
+  }
   if (live != null) {
     return _StatusInfo(
       live.isDownloading ? _tr('In download', 'Downloading') : live.stateLabel,
@@ -837,7 +873,7 @@ _StatusInfo _statusOf(MfRequest r, ThemeData theme) {
       Colors.lightBlueAccent,
     );
   }
-  if (r.downloads.isNotEmpty) {
+  if (r.isDownloading) {
     return _StatusInfo(_tr('In download', 'Downloading'), Symbols.download_rounded, Colors.lightBlueAccent);
   }
   return switch (r.mediaStatus) {
@@ -949,7 +985,7 @@ class _LiveDownloadProgressState extends State<_LiveDownloadProgress> {
     final now = DateTime.now();
 
     final live = r.live;
-    if (live != null) return _buildLive(context, live, now, locale, muted);
+    if (live != null && live.isActive) return _buildLive(context, live, now, locale, muted);
 
     final total = r.downloads.fold<double>(0, (sum, d) => sum + d.size);
     final leftAtFetch = r.downloads.fold<double>(0, (sum, d) => sum + d.sizeLeft);
@@ -1173,7 +1209,6 @@ const Color mfGreen = Color(0xFF2EB872);
 const Color mfAmber = Color(0xFFE0A030);
 const Color mfCyan = Color(0xFF1BA8D8);
 
-enum _MfRequestFilter { active, available, all }
 
 /// Pagina a sé "Le mie richieste" sul telefono (aperta dalla notifica).
 class MaggioflixRequestsPhonePage extends StatefulWidget {
@@ -1226,7 +1261,12 @@ class MaggioflixRequestsTab extends StatefulWidget {
 }
 
 class _MaggioflixRequestsTabState extends State<MaggioflixRequestsTab> {
-  _MfRequestFilter _filter = _MfRequestFilter.active;
+  MfRequestsScope _scope = MfRequestsScope.mine;
+
+  /// Richieste di tutti: si carica solo la prima volta che le apri.
+  MfRequestsController? _all;
+
+  MfRequestsController get _current => _scope == MfRequestsScope.mine ? widget.controller : _all!;
 
   @override
   void initState() {
@@ -1246,6 +1286,8 @@ class _MaggioflixRequestsTabState extends State<MaggioflixRequestsTab> {
   @override
   void dispose() {
     widget.controller.removeListener(_changed);
+    _all?.removeListener(_changed);
+    _all?.dispose();
     super.dispose();
   }
 
@@ -1253,40 +1295,29 @@ class _MaggioflixRequestsTabState extends State<MaggioflixRequestsTab> {
     if (mounted) setState(() {});
   }
 
+  void _select(MfRequestsScope scope) {
+    if (scope == _scope) return;
+    if (scope == MfRequestsScope.all && _all == null) {
+      _all = MfRequestsController(scope: MfRequestsScope.all, follow: widget.controller)..addListener(_changed);
+      _all!.bind(widget.controller.source);
+    }
+    _all?.pollingEnabled = scope == MfRequestsScope.all;
+    if (scope == MfRequestsScope.all) _all?.silentReload();
+    setState(() => _scope = scope);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final c = widget.controller;
+    final c = _current;
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurface.withValues(alpha: 0.65);
-    final active = c.requests.where((r) => r.isInProgress).toList();
-    final available = c.requests.where((r) => r.isAvailable).toList();
-    final shown = switch (_filter) {
-      _MfRequestFilter.active => active,
-      _MfRequestFilter.available => available,
-      _MfRequestFilter.all => c.requests,
-    };
-    final now = DateTime.now();
-    final recent = available
-        .where((r) {
-          final when = r.updatedAt ?? r.createdAt;
-          return when != null && now.difference(when).inDays < 14;
-        })
-        .take(3)
-        .toList();
+    final showRequester = _scope == MfRequestsScope.all;
 
-    Widget chip(String label, _MfRequestFilter value) {
-      final selected = _filter == value;
-      return ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        showCheckmark: false,
-        onSelected: (_) => setState(() => _filter = value),
-      );
-    }
-
-    Widget card(MfRequest r) => Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: _MfRequestCard(key: ValueKey('mf-card-${r.id}'), request: r, item: c.itemFor(r)),
+    Widget chip(String label, MfRequestsScope value) => ChoiceChip(
+      label: Text(label),
+      selected: _scope == value,
+      showCheckmark: false,
+      onSelected: (_) => _select(value),
     );
 
     final children = <Widget>[
@@ -1296,12 +1327,8 @@ class _MaggioflixRequestsTabState extends State<MaggioflixRequestsTab> {
         spacing: 8,
         runSpacing: 8,
         children: [
-          chip(
-            active.isEmpty ? _tr('In corso', 'In progress') : _tr('In corso · ${active.length}', 'In progress · ${active.length}'),
-            _MfRequestFilter.active,
-          ),
-          chip(_tr('Disponibili', 'Available'), _MfRequestFilter.available),
-          chip(_tr('Tutte', 'All'), _MfRequestFilter.all),
+          chip(maggioflixMyRequestsLabel(), MfRequestsScope.mine),
+          chip(_tr('Tutte le richieste', 'All requests'), MfRequestsScope.all),
         ],
       ),
       const SizedBox(height: 14),
@@ -1315,45 +1342,41 @@ class _MaggioflixRequestsTabState extends State<MaggioflixRequestsTab> {
           padding: const EdgeInsets.all(24),
           child: Column(
             children: [
-              Text(_tr('Impossibile caricare le richieste.', 'Could not load your requests.')),
+              Text(_tr('Impossibile caricare le richieste.', 'Could not load the requests.')),
               const SizedBox(height: 12),
               OutlinedButton(onPressed: () => unawaited(c.load()), child: Text(t.common.retry)),
             ],
           ),
         ),
       );
+    } else if (c.requests.isEmpty) {
+      children.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Text(
+            _scope == MfRequestsScope.mine
+                ? _tr('Non hai ancora fatto richieste.', "You haven't requested anything yet.")
+                : _tr('Nessuna richiesta sul server.', 'No requests on the server.'),
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+          ),
+        ),
+      );
     } else {
-      if (shown.isEmpty) {
+      for (final r in c.requests) {
         children.add(
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Text(
-              switch (_filter) {
-                _MfRequestFilter.active => _tr('Nessuna richiesta in corso.', 'Nothing in progress.'),
-                _MfRequestFilter.available => _tr('Ancora nessun titolo disponibile.', 'Nothing available yet.'),
-                _MfRequestFilter.all => _tr('Non hai ancora fatto richieste.', "You haven't requested anything yet."),
-              },
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _MfRequestCard(
+              key: ValueKey('mf-card-${_scope.name}-${r.id}'),
+              request: r,
+              item: c.itemFor(r),
+              showRequester: showRequester,
             ),
           ),
         );
-      } else {
-        children.addAll(shown.map(card));
       }
-      if (_filter == _MfRequestFilter.active && recent.isNotEmpty) {
-        children.add(
-          Padding(
-            padding: const EdgeInsets.only(top: 8, bottom: 10),
-            child: Text(
-              _tr('Arrivati da poco', 'Recently arrived'),
-              style: theme.textTheme.titleSmall?.copyWith(color: muted, fontWeight: FontWeight.w700),
-            ),
-          ),
-        );
-        children.addAll(recent.map(card));
-      }
-      if (_filter == _MfRequestFilter.all && c.requests.length < c.total) {
+      if (c.requests.length < c.total) {
         children.add(
           Center(
             child: c.loadingMore
@@ -1389,10 +1412,17 @@ _MfPhoneStatus _phoneStatusOf(MfRequest r, CatalogItem? item, ThemeData theme) {
   if (r.status == 4) return _MfPhoneStatus(_tr('Non riuscita', 'Failed'), theme.colorScheme.error);
   if (r.isAvailable) return _MfPhoneStatus(_tr('Disponibile', 'Available'), mfGreen);
   final live = r.live;
+  if (live != null && live.isImported) {
+    return _MfPhoneStatus(
+      _tr('Sul server', 'On the server'),
+      mfGreen,
+      _tr('In arrivo su Plex a momenti', 'Coming to Plex any moment'),
+    );
+  }
   if (live != null) {
     return _MfPhoneStatus(live.isDownloading ? _tr('In download', 'Downloading') : live.stateLabel, mfCyan);
   }
-  if (r.downloads.isNotEmpty) return _MfPhoneStatus(_tr('In download', 'Downloading'), mfCyan);
+  if (r.isDownloading) return _MfPhoneStatus(_tr('In download', 'Downloading'), mfCyan);
   if (r.mediaStatus == 4) {
     return _MfPhoneStatus(
       _tr('Parzialmente disponibile', 'Partially available'),
@@ -1421,7 +1451,10 @@ class _MfRequestCard extends StatelessWidget {
   final MfRequest request;
   final Future<({CatalogItem item, String? thumbUrl})?> item;
 
-  const _MfRequestCard({super.key, required this.request, required this.item});
+  /// Nelle richieste di tutti: chi l'ha chiesto.
+  final bool showRequester;
+
+  const _MfRequestCard({super.key, required this.request, required this.item, this.showRequester = false});
 
   @override
   Widget build(BuildContext context) {
@@ -1449,6 +1482,7 @@ class _MfRequestCard extends StatelessWidget {
           request.kind == MediaKind.movie ? _tr('Film', 'Movie') : _tr('Serie TV', 'TV show'),
           if (data?.item.year case final year?) '$year',
           if (request.is4k) '4K',
+          if (showRequester && request.requestedBy != null) _tr('di ${request.requestedBy}', 'by ${request.requestedBy}'),
         ];
         final playLink = request.playLink;
 
@@ -1632,6 +1666,12 @@ class _MaggioflixLiveStatusPillState extends State<MaggioflixLiveStatusPill> {
       accent = Colors.green;
       icon = Symbols.check_circle_rounded;
       title = maggioflixAvailableLabel();
+    } else if (live != null && live.isImported) {
+      accent = Colors.green;
+      icon = Symbols.check_circle_rounded;
+      title = _tr('Sul server', 'On the server');
+      subtitle = _tr('In arrivo su Plex a momenti', 'Coming to Plex any moment');
+      fill = 1.0;
     } else if (live != null) {
       accent = const Color(0xFF4FC3F7);
       final progress = live.progressAt(now);

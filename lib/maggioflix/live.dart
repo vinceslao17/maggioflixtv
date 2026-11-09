@@ -36,8 +36,12 @@ class MfLiveItem {
   final int speed;
   final int? eta;
 
-  /// downloading, metadata, checking, queued, stalled, paused, error, importing
+  /// downloading, metadata, checking, queued, stalled, paused, error,
+  /// importing (scaricato, Radarr/Sonarr lo stanno spostando), imported (sul server)
   final String state;
+
+  /// Quando Radarr/Sonarr l'hanno importato (solo per [isImported]).
+  final DateTime? importedAt;
   final int seeds;
   final int peers;
   final int count;
@@ -62,15 +66,21 @@ class MfLiveItem {
     required this.seasons,
     required this.episodes,
     required this.receivedAt,
+    this.importedAt,
   });
 
   bool get isDownloading => state == 'downloading';
   bool get isImporting => state == 'importing';
+  bool get isImported => state == 'imported';
+
+  /// Download ancora in corso (non ancora sul server).
+  bool get isActive => !isImported;
 
   /// Avanzamento stimato adesso, tra un aggiornamento e l'altro.
   double progressAt(DateTime now) {
     if (!isDownloading || speed <= 0 || size <= 0) return progress.clamp(0.0, 1.0).toDouble();
-    final elapsed = now.difference(receivedAt).inMilliseconds / 1000.0;
+    // Al massimo 3 s di stima: poi arriva il dato vero e non si torna indietro.
+    final elapsed = math.min(now.difference(receivedAt).inMilliseconds / 1000.0, 3.0);
     final leftNow = math.max(left - speed * elapsed, size * 0.001);
     return (1 - leftNow / size).clamp(0.0, 1.0).toDouble();
   }
@@ -92,6 +102,7 @@ class MfLiveItem {
     'paused' => _tr('In pausa', 'Paused'),
     'error' => _tr('Errore del download', 'Download error'),
     'importing' => _tr('Scaricato, in importazione', 'Downloaded, importing'),
+    'imported' => _tr('Sul server, in arrivo su Plex', 'On the server, coming to Plex'),
     _ => '',
   };
 
@@ -117,6 +128,9 @@ class MfLiveItem {
       seasons: seasons is List ? seasons.whereType<num>().map((e) => e.toInt()).toList() : const [],
       episodes: _int(json['episodes']) ?? 0,
       receivedAt: receivedAt,
+      importedAt: _int(json['importedAt']) == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(_int(json['importedAt'])!),
     );
   }
 }
@@ -137,11 +151,15 @@ class MaggioflixLive extends ChangeNotifier with WidgetsBindingObserver {
   int _failures = 0;
   bool _inFlight = false;
   bool _foreground = true;
+  DateTime? _lastSuccess;
 
   /// Il ponte ha risposto all'ultima lettura.
   bool reachable = false;
 
   bool get enabled => maggioflixLiveUrl.isNotEmpty;
+
+  /// Quanti titoli risultano appena arrivati sul server.
+  int get importedCount => _byTmdb.values.where((i) => i.isImported).length;
 
   /// Accende gli aggiornamenti; vanno avanti finché non si chiama la funzione
   /// restituita (una per ogni pagina che li mostra).
@@ -228,18 +246,23 @@ class MaggioflixLive extends ChangeNotifier with WidgetsBindingObserver {
       if (!reachable) appLogger.i('MaggioFlix Live collegato');
       reachable = true;
       _failures = 0;
+      _lastSuccess = now;
       next = _byTmdb.isEmpty && _byTvdb.isEmpty ? const Duration(seconds: 4) : const Duration(milliseconds: 1500);
       notifyListeners();
     } catch (e) {
       _failures++;
-      if (reachable || _failures == 1) appLogger.w('MaggioFlix Live non raggiungibile', error: e);
-      if (reachable || _byTmdb.isNotEmpty || _byTvdb.isNotEmpty) {
+      if (_failures == 3) appLogger.w('MaggioFlix Live non raggiungibile', error: e);
+      // Un intoppo di rete non deve far sparire il download: si tengono gli
+      // ultimi dati per 20 s, poi si torna a quelli di Seerr.
+      final last = _lastSuccess;
+      final stale = last == null || DateTime.now().difference(last) > const Duration(seconds: 20);
+      if (stale && (reachable || _byTmdb.isNotEmpty || _byTvdb.isNotEmpty)) {
         reachable = false;
         _byTmdb.clear();
         _byTvdb.clear();
         notifyListeners();
       }
-      next = Duration(seconds: math.min(60, 5 * _failures));
+      next = stale ? Duration(seconds: math.min(60, 5 * _failures)) : const Duration(seconds: 2);
     } finally {
       _inFlight = false;
       _schedule(next);

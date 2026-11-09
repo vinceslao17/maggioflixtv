@@ -1445,8 +1445,10 @@ class _CatalogBadges extends StatelessWidget {
 
   /// MaggioFlix: stato sul server a colori (verde disponibile, giallo
   /// richiesto, azzurro in lavorazione, rosso rifiutato), il resto in nero.
-  (Color, Color) _colorsFor(String label, [String? liveLabel]) {
-    if (liveLabel != null && label == liveLabel) return (const Color(0xFF1785B0), Colors.white);
+  (Color, Color) _colorsFor(String label, [String? liveLabel, bool liveImported = false]) {
+    if (liveLabel != null && label == liveLabel) {
+      return (liveImported ? const Color(0xFF1F8A55) : const Color(0xFF1785B0), Colors.white);
+    }
     final state = item?.serverState;
     if (state != null) {
       if (label == _catalogAvailabilityBadge(state)) return (const Color(0xFF1F8A55), Colors.white);
@@ -1474,15 +1476,24 @@ class _CatalogBadges extends StatelessWidget {
         if (live == null) return _buildBadges(context, labels);
         // MaggioFlix: avanzamento dal vivo al posto dell'etichetta della richiesta.
         final requestLabel = _catalogRequestBadge(item!.serverState);
-        final liveLabel = live.isDownloading
+        if (item!.serverState?.availability == CatalogAvailability.available) return _buildBadges(context, labels);
+        final it = LocaleSettings.currentLocale.languageCode == 'it';
+        final liveLabel = live.isImported
+            ? (it ? 'Sul server' : 'On the server')
+            : live.isDownloading
             ? '${(live.progressAt(DateTime.now()) * 100).floor()}%'
             : (live.isImporting ? 'Import…' : '${(live.progress * 100).floor()}% · ${live.stateLabel}');
-        return _buildBadges(context, [liveLabel, ...labels.where((l) => l != requestLabel)], liveLabel: liveLabel);
+        return _buildBadges(
+          context,
+          [liveLabel, ...labels.where((l) => l != requestLabel)],
+          liveLabel: liveLabel,
+          liveImported: live.isImported,
+        );
       },
     );
   }
 
-  Widget _buildBadges(BuildContext context, List<String> labels, {String? liveLabel}) {
+  Widget _buildBadges(BuildContext context, List<String> labels, {String? liveLabel, bool liveImported = false}) {
     return Positioned(
       key: const Key('catalog-badges'),
       top: 6,
@@ -1495,7 +1506,7 @@ class _CatalogBadges extends StatelessWidget {
             if (index > 0) const SizedBox(height: 3),
             DecoratedBox(
               decoration: BoxDecoration(
-                color: _colorsFor(labels[index], liveLabel).$1,
+                color: _colorsFor(labels[index], liveLabel, liveImported).$1,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Padding(
@@ -1504,7 +1515,7 @@ class _CatalogBadges extends StatelessWidget {
                   labels[index],
                   maxLines: 1,
                   overflow: .ellipsis,
-                  style: TextStyle(color: _colorsFor(labels[index], liveLabel).$2, fontSize: 9, fontWeight: .w700, height: 1),
+                  style: TextStyle(color: _colorsFor(labels[index], liveLabel, liveImported).$2, fontSize: 9, fontWeight: .w700, height: 1),
                 ),
               ),
             ),

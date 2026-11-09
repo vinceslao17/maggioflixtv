@@ -183,20 +183,22 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
         MaggioflixLive.instance.itemFor(item.kind, tmdbId: tmdbId, is4k: true);
   }
 
-  /// Compare o sparisce il download: la pillola cambia. Quando finisce, la
-  /// scheda si ricarica ogni 30 s finché Seerr non lo segna disponibile.
+  /// Compare o sparisce il download: la pillola cambia. Quando arriva sul
+  /// server, la scheda si ricarica ogni 30 s finché Seerr non lo segna disponibile.
   void _onMfLive() {
     if (!mounted) return;
-    final present = _mfLiveItem() != null;
-    if (present == _mfLivePresent) return;
+    final live = _mfLiveItem();
+    final present = live != null;
+    final arrived = live?.isImported ?? false;
     final finished = _mfLivePresent && !present && MaggioflixLive.instance.reachable;
-    setState(() {
-      _mfLivePresent = present;
-      if (present) _mfFinishing = false;
-      if (finished) _mfFinishing = true;
-    });
-    if (finished) {
-      _mfReloadTimer?.cancel();
+    if (present != _mfLivePresent || finished) {
+      setState(() {
+        _mfLivePresent = present;
+        if (present) _mfFinishing = false;
+        if (finished) _mfFinishing = true;
+      });
+    }
+    if ((arrived || finished) && _mfReloadTimer == null) {
       var attempts = 0;
       _mfReloadTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
         attempts++;

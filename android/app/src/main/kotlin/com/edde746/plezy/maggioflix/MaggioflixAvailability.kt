@@ -18,6 +18,8 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -56,7 +58,14 @@ object MaggioflixAvailability {
   private const val KEY_STATE = "state"
   private const val KEY_BASELINE = "baseline_done"
   private const val KEY_PENDING = "pending"
+  private const val KEY_LIVE = "live_url"
+  private const val KEY_FAST_UNTIL = "fast_until"
   private const val WORK_NAME = "maggioflix_availability"
+  private const val WORK_SOON = "maggioflix_availability_soon"
+
+  // Mentre qualcosa scarica (o subito dopo una richiesta) si controlla ogni 2 minuti.
+  private const val FAST_DELAY_MINUTES = 2L
+  private const val FAST_AFTER_REQUEST_MS = 3 * 60 * 60 * 1000L
   private const val NOTIFICATION_CHANNEL = "maggioflix_available"
   private const val NOTIFICATION_TAG = "maggioflix_available"
 
@@ -86,6 +95,11 @@ object MaggioflixAvailability {
           mainHandler.post { result.success(found) }
         }
         "takePending" -> result.success(takePending(appContext))
+        "requestMade" -> {
+          prefs(appContext).edit().putLong(KEY_FAST_UNTIL, System.currentTimeMillis() + FAST_AFTER_REQUEST_MS).apply()
+          scheduleSoon(appContext)
+          result.success(true)
+        }
         else -> result.notImplemented()
       }
     }
@@ -97,16 +111,19 @@ object MaggioflixAvailability {
     val baseUrl = (args?.get("baseUrl") as? String)?.trimEnd('/')
     val cookie = args?.get("cookie") as? String
     val userId = (args?.get("userId") as? Number)?.toInt()
+    val liveUrl = (args?.get("liveUrl") as? String)?.trimEnd('/')
     val workManager = WorkManager.getInstance(context)
     if (baseUrl.isNullOrEmpty() || cookie.isNullOrEmpty() || userId == null) {
       prefs(context).edit().remove(KEY_BASE).remove(KEY_COOKIE).apply()
       workManager.cancelUniqueWork(WORK_NAME)
+      workManager.cancelUniqueWork(WORK_SOON)
       return
     }
     synchronized(lock) {
       val p = prefs(context)
       val sameAccount = p.getString(KEY_BASE, null) == baseUrl && p.getInt(KEY_USER, -1) == userId
       val edit = p.edit().putString(KEY_BASE, baseUrl).putString(KEY_COOKIE, cookie).putInt(KEY_USER, userId)
+        .putString(KEY_LIVE, liveUrl ?: "")
       if (!sameAccount) edit.remove(KEY_STATE).remove(KEY_PENDING).putBoolean(KEY_BASELINE, false)
       edit.apply()
     }
@@ -146,6 +163,27 @@ object MaggioflixAvailability {
     ) ?: return 0
     val results = JSONObject(body).optJSONArray("results") ?: return 0
 
+    // Ponte MaggioFlix Live: sa subito cosa sta scaricando e cosa è appena
+    // arrivato sul server, senza aspettare Seerr.
+    val liveImported = HashSet<String>()
+    val liveActive = HashSet<String>()
+    val liveUrl = p.getString(KEY_LIVE, null)
+    if (!liveUrl.isNullOrEmpty()) {
+      httpGet("$liveUrl/api/live", cookie = null, extraHeaders = mapOf("X-Seerr-Session" to cookie))?.let { raw ->
+        runCatching { JSONObject(raw).optJSONArray("items") }.getOrNull()?.let { items ->
+          for (i in 0 until items.length()) {
+            val item = items.optJSONObject(i) ?: continue
+            val type = item.optString("type")
+            val is4k = item.optBoolean("is4k", false)
+            val target = if (item.optString("state") == "imported") liveImported else liveActive
+            item.optInt("tmdbId", 0).takeIf { it > 0 }?.let { target.add("$type:tmdb:$it:$is4k") }
+            item.optInt("tvdbId", 0).takeIf { it > 0 }?.let { target.add("$type:tvdb:$it:$is4k") }
+          }
+        }
+      }
+    }
+    var anyDownloading = false
+
     val state = try {
       JSONObject(p.getString(KEY_STATE, null) ?: "{}")
     } catch (e: Exception) {
@@ -169,7 +207,19 @@ object MaggioflixAvailability {
           if (number >= 0) requestedSeasons.add(number)
         }
       }
-      val status = derivedStatus(media, isMovie, is4k, requestedSeasons)
+      val seerrStatus = derivedStatus(media, isMovie, is4k, requestedSeasons)
+      val type = if (isMovie) "movie" else "tv"
+      val tvdbId = media.optInt("tvdbId", 0)
+      fun inLive(set: Set<String>) =
+        (tmdbId > 0 && "$type:tmdb:$tmdbId:$is4k" in set) || (tvdbId > 0 && "$type:tvdb:$tvdbId:$is4k" in set)
+      // Appena importato da Radarr/Sonarr: per un film è disponibile, per una
+      // serie sono arrivati (almeno) i primi episodi.
+      val status = when {
+        seerrStatus >= STATUS_AVAILABLE || !inLive(liveImported) -> seerrStatus
+        isMovie -> STATUS_AVAILABLE
+        else -> maxOf(seerrStatus, STATUS_PARTIAL)
+      }
+      if (status < STATUS_AVAILABLE && inLive(liveActive)) anyDownloading = true
       val key = id.toString()
       val previous = if (state.has(key)) state.optInt(key, 0) else 0
       state.put(key, status)
@@ -182,6 +232,7 @@ object MaggioflixAvailability {
     }
 
     p.edit().putString(KEY_STATE, state.toString()).putBoolean(KEY_BASELINE, true).apply()
+    if (anyDownloading || System.currentTimeMillis() < p.getLong(KEY_FAST_UNTIL, 0)) scheduleSoon(context)
     if (found.isEmpty()) return 0
 
     val pending = try {
@@ -315,7 +366,16 @@ object MaggioflixAvailability {
     )
   }
 
-  private fun httpGet(url: String, cookie: String): String? {
+  /** Prossimo controllo tra 2 minuti (mentre qualcosa scarica o dopo una richiesta). */
+  private fun scheduleSoon(context: Context) {
+    val request = OneTimeWorkRequestBuilder<MaggioflixAvailabilityWorker>()
+      .setInitialDelay(FAST_DELAY_MINUTES, TimeUnit.MINUTES)
+      .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+      .build()
+    WorkManager.getInstance(context).enqueueUniqueWork(WORK_SOON, ExistingWorkPolicy.REPLACE, request)
+  }
+
+  private fun httpGet(url: String, cookie: String?, extraHeaders: Map<String, String> = emptyMap()): String? {
     var connection: HttpURLConnection? = null
     return try {
       connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -323,7 +383,8 @@ object MaggioflixAvailability {
         readTimeout = 20000
         instanceFollowRedirects = false
         setRequestProperty("Accept", "application/json")
-        setRequestProperty("Cookie", "connect.sid=$cookie")
+        if (cookie != null) setRequestProperty("Cookie", "connect.sid=$cookie")
+        for ((name, value) in extraHeaders) setRequestProperty(name, value)
       }
       if (connection.responseCode != 200) {
         Log.i(TAG, "GET ${connection.url.path} -> ${connection.responseCode}")

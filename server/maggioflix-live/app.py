@@ -24,6 +24,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 log = logging.getLogger("maggioflix-live")
@@ -41,6 +42,9 @@ PORT = int(env("PORT", "8790") or 8790)
 POLL_SECONDS = float(env("POLL_SECONDS", "1") or 1)
 MAP_SECONDS = float(env("MAP_SECONDS", "10") or 10)
 AUTH_DISABLED = env("AUTH_DISABLED") == "1"  # solo per prove in locale
+IMPORT_WINDOW = float(env("IMPORT_WINDOW_MINUTES", "90") or 90) * 60
+STICKY_SECONDS = 2 * 24 * 3600  # un torrent abbinato resta abbinato per 2 giorni
+QBIT_ETA_INFINITE = 8640000
 
 ARRS = [
     # (tipo, 4K?, url, chiave)
@@ -82,6 +86,12 @@ class State:
         # hash -> {"type", "tmdbId", "tvdbId", "is4k", "inQueue", "seasons", "episodes"}
         self.mapping: dict[str, dict] = {}
         self.last_map = 0.0
+        # Ultimo abbinamento riuscito per ogni Radarr/Sonarr: se uno non risponde
+        # si tiene quello precedente, cosi' i download non spariscono a tratti.
+        self.arr_maps: dict[str, dict[str, dict]] = {}
+        self.arr_imports: dict[str, list[dict]] = {}
+        self.known: dict[str, tuple[dict, float]] = {}
+        self.imports: list[dict] = []
         self.snapshot: dict | None = None
         self.snapshot_at = 0.0
 
@@ -128,7 +138,7 @@ class Qbit:
         return None
 
 
-def arr_get(url: str, key: str, path: str, timeout: float = 15):
+def arr_get(url: str, key: str, path: str, timeout: float = 30):
     req = urllib.request.Request(url + path, headers={"X-Api-Key": key, "Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read() or b"null")
@@ -185,10 +195,19 @@ def _records(payload) -> list:
     return payload if isinstance(payload, list) else []
 
 
-def build_mapping() -> dict[str, dict]:
-    mapping: dict[str, dict] = {}
+def _when(value) -> float | None:
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
 
-    def add(download_id, kind, is4k, tmdb, tvdb, in_queue, season=None, episode=None):
+
+def map_instance(kind: str, is4k: bool, url: str, key: str) -> tuple[dict[str, dict], list[dict]]:
+    """Abbinamenti hash -> titolo e importazioni recenti di un Radarr/Sonarr."""
+    mapping: dict[str, dict] = {}
+    imports: list[dict] = []
+
+    def add(download_id, tmdb, tvdb, in_queue, season=None, episode=None):
         if not download_id or not (tmdb or tvdb):
             return
         h = str(download_id).lower()
@@ -203,49 +222,98 @@ def build_mapping() -> dict[str, dict]:
             if episode is not None:
                 m["episodes"].add((season, episode))
 
-    for kind, is4k, url, key in ARRS:
-        try:
-            if kind == "movie":
-                queue = arr_get(url, key, "/api/v3/queue?page=1&pageSize=500&includeMovie=true")
-                history = arr_get(
-                    url, key,
-                    "/api/v3/history?page=1&pageSize=150&sortKey=date&sortDirection=descending"
-                    "&eventType=1&includeMovie=true",
+    now = time.time()
+    if kind == "movie":
+        queue = arr_get(url, key, "/api/v3/queue?page=1&pageSize=500&includeMovie=true")
+        grabbed = arr_get(
+            url, key,
+            "/api/v3/history?page=1&pageSize=200&sortKey=date&sortDirection=descending&eventType=1&includeMovie=true",
+        )
+        imported = arr_get(
+            url, key,
+            "/api/v3/history?page=1&pageSize=100&sortKey=date&sortDirection=descending&eventType=3&includeMovie=true",
+        )
+        for in_queue, rows in ((True, _records(queue)), (False, _records(grabbed))):
+            for r in rows:
+                movie = r.get("movie") or {}
+                add(r.get("downloadId"), _int(movie.get("tmdbId")), None, in_queue)
+        for r in _records(imported):
+            at = _when(r.get("date"))
+            movie = r.get("movie") or {}
+            if at and now - at < IMPORT_WINDOW and movie.get("tmdbId"):
+                imports.append({"type": "movie", "tmdbId": _int(movie.get("tmdbId")), "tvdbId": None, "is4k": is4k,
+                                "at": at, "episode": None, "hash": str(r.get("downloadId") or "").lower()})
+    else:
+        queue = arr_get(url, key, "/api/v3/queue?page=1&pageSize=1000&includeSeries=true&includeEpisode=true")
+        grabbed = arr_get(
+            url, key,
+            "/api/v3/history?page=1&pageSize=400&sortKey=date&sortDirection=descending"
+            "&eventType=1&includeSeries=true&includeEpisode=true",
+        )
+        imported = arr_get(
+            url, key,
+            "/api/v3/history?page=1&pageSize=300&sortKey=date&sortDirection=descending"
+            "&eventType=3&includeSeries=true&includeEpisode=true",
+        )
+        for in_queue, rows in ((True, _records(queue)), (False, _records(grabbed))):
+            for r in rows:
+                series = r.get("series") or {}
+                ep = r.get("episode") or {}
+                add(
+                    r.get("downloadId"), _int(series.get("tmdbId")), _int(series.get("tvdbId")), in_queue,
+                    _int(ep.get("seasonNumber")), _int(ep.get("episodeNumber")),
                 )
-                for in_queue, rows in ((True, _records(queue)), (False, _records(history))):
-                    for r in rows:
-                        movie = r.get("movie") or {}
-                        add(r.get("downloadId"), "movie", is4k, _int(movie.get("tmdbId")), None, in_queue)
-            else:
-                queue = arr_get(url, key, "/api/v3/queue?page=1&pageSize=1000&includeSeries=true&includeEpisode=true")
-                history = arr_get(
-                    url, key,
-                    "/api/v3/history?page=1&pageSize=300&sortKey=date&sortDirection=descending"
-                    "&eventType=1&includeSeries=true&includeEpisode=true",
-                )
-                for in_queue, rows in ((True, _records(queue)), (False, _records(history))):
-                    for r in rows:
-                        series = r.get("series") or {}
-                        ep = r.get("episode") or {}
-                        add(
-                            r.get("downloadId"), "tv", is4k,
-                            _int(series.get("tmdbId")), _int(series.get("tvdbId")), in_queue,
-                            _int(ep.get("seasonNumber")), _int(ep.get("episodeNumber")),
-                        )
-        except Exception as e:  # noqa: BLE001
-            log.warning("%s non raggiungibile (%s): %s", "Radarr" if kind == "movie" else "Sonarr", url, e)
-    return mapping
+        for r in _records(imported):
+            at = _when(r.get("date"))
+            series = r.get("series") or {}
+            ep = r.get("episode") or {}
+            if at and now - at < IMPORT_WINDOW and (series.get("tmdbId") or series.get("tvdbId")):
+                imports.append({
+                    "type": "tv", "tmdbId": _int(series.get("tmdbId")) or None,
+                    "tvdbId": _int(series.get("tvdbId")) or None, "is4k": is4k, "at": at,
+                    "episode": (_int(ep.get("seasonNumber")), _int(ep.get("episodeNumber"))),
+                    "hash": str(r.get("downloadId") or "").lower(),
+                })
+    return mapping, imports
+
+
+_arr_errors: dict[str, float] = {}
 
 
 def poll_mapping() -> None:
     while True:
-        try:
-            mapping = build_mapping()
-            with STATE.lock:
-                STATE.mapping = mapping
-                STATE.last_map = time.time()
-        except Exception as e:  # noqa: BLE001
-            log.warning("abbinamento torrent fallito: %s", e)
+        for kind, is4k, url, key in ARRS:
+            name = f"{kind}{'4k' if is4k else ''}"
+            try:
+                mapping, imports = map_instance(kind, is4k, url, key)
+                with STATE.lock:
+                    STATE.arr_maps[name] = mapping
+                    STATE.arr_imports[name] = imports
+
+            except Exception as e:  # noqa: BLE001 - si tiene l'abbinamento precedente
+                if time.time() - _arr_errors.get(name, 0) > 300:
+                    log.warning("%s non raggiungibile (%s): %s", "Radarr" if kind == "movie" else "Sonarr", url, e)
+                    _arr_errors[name] = time.time()
+        now = time.time()
+        with STATE.lock:
+            merged: dict[str, dict] = {}
+            for mapping in STATE.arr_maps.values():
+                for h, m in mapping.items():
+                    if h in merged:
+                        merged[h]["inQueue"] = merged[h]["inQueue"] or m["inQueue"]
+                    else:
+                        merged[h] = m
+            for h, m in merged.items():
+                STATE.known[h] = (m, now)
+            for h, (m, seen) in list(STATE.known.items()):
+                if now - seen > STICKY_SECONDS:
+                    del STATE.known[h]
+                elif h not in merged:
+                    merged[h] = {**m, "inQueue": False}
+            STATE.mapping = merged
+            STATE.imports = [i for imports in STATE.arr_imports.values() for i in imports]
+            STATE.last_map = now
+            STATE.snapshot = None
         time.sleep(MAP_SECONDS)
 
 
@@ -264,25 +332,28 @@ def build_snapshot() -> dict:
             t = torrents.get(h)
             if not t:
                 continue
-            progress = float(t.get("progress") or 0)
+            progress = min(max(float(t.get("progress") or 0), 0.0), 1.0)
             if progress >= 1:
                 if not m["inQueue"]:
-                    continue  # finito e gia' importato
+                    continue  # finito: lo racconta l'importazione
                 state = "importing"
             else:
                 state = STATE_MAP.get(t.get("state", ""), "downloading")
-            ident = m["tmdbId"] or m["tvdbId"]
-            key = (m["type"], ident, m["is4k"])
+            key = (m["type"], m["tmdbId"] or m["tvdbId"], m["is4k"])
             g = groups.setdefault(key, {
                 "type": m["type"], "tmdbId": m["tmdbId"], "tvdbId": m["tvdbId"], "is4k": m["is4k"],
-                "size": 0, "left": 0, "speed": 0, "seeds": 0, "peers": 0, "count": 0,
+                "size": 0, "done": 0.0, "speed": 0, "etas": [], "seeds": 0, "peers": 0, "count": 0,
                 "states": [], "seasons": set(), "episodes": set(),
             })
             size = int(t.get("size") or t.get("total_size") or 0)
-            left = int(t.get("amount_left") or 0) if progress < 1 else 0
             g["size"] += size
-            g["left"] += left
-            g["speed"] += int(t.get("dlspeed") or 0) if progress < 1 else 0
+            # Stessi numeri che mostra qBittorrent: avanzamento, velocita' e ETA suoi.
+            g["done"] += progress * size
+            if progress < 1:
+                g["speed"] += int(t.get("dlspeed") or 0)
+                eta = _int(t.get("eta"))
+                if state == "downloading" and eta is not None and 0 <= eta < QBIT_ETA_INFINITE:
+                    g["etas"].append(eta)
             g["seeds"] += int(t.get("num_seeds") or 0)
             g["peers"] += int(t.get("num_leechs") or 0)
             g["count"] += 1
@@ -293,26 +364,42 @@ def build_snapshot() -> dict:
         items = []
         for g in groups.values():
             state = min(g["states"], key=lambda s: STATE_PRIORITY.index(s) if s in STATE_PRIORITY else 99)
-            size, left, speed = g["size"], g["left"], g["speed"]
+            size = g["size"]
+            progress = g["done"] / size if size > 0 else 0.0
+            left = max(int(size - g["done"]), 0)
+            speed = g["speed"]
+            eta = max(g["etas"]) if g["etas"] else (int(left / speed) if speed > 0 and left > 0 else None)
             items.append({
-                "type": g["type"],
-                "tmdbId": g["tmdbId"],
-                "tvdbId": g["tvdbId"],
-                "is4k": g["is4k"],
-                "progress": round(1 - left / size, 4) if size > 0 else 0,
-                "size": size,
-                "left": left,
-                "speed": speed,
-                "eta": int(left / speed) if speed > 0 and left > 0 else None,
-                "state": state,
-                "seeds": g["seeds"],
-                "peers": g["peers"],
-                "count": g["count"],
-                "seasons": sorted(g["seasons"]),
-                "episodes": len(g["episodes"]),
+                "type": g["type"], "tmdbId": g["tmdbId"], "tvdbId": g["tvdbId"], "is4k": g["is4k"],
+                "progress": round(progress, 4), "size": size, "left": left, "speed": speed, "eta": eta,
+                "state": state, "seeds": g["seeds"], "peers": g["peers"], "count": g["count"],
+                "seasons": sorted(g["seasons"]), "episodes": len(g["episodes"]),
             })
+
+        # Arrivati sul server da poco (importati da Radarr/Sonarr), se non c'e' altro in corso.
+        imported: dict[tuple, dict] = {}
+        for i in STATE.imports:
+            key = (i["type"], i["tmdbId"] or i["tvdbId"], i["is4k"])
+            if key in groups:
+                continue
+            g = imported.setdefault(key, {
+                "type": i["type"], "tmdbId": i["tmdbId"], "tvdbId": i["tvdbId"], "is4k": i["is4k"],
+                "at": i["at"], "episodes": set(), "seasons": set(),
+            })
+            g["at"] = max(g["at"], i["at"])
+            if i["episode"] and i["episode"][0] is not None:
+                g["seasons"].add(i["episode"][0])
+                g["episodes"].add(i["episode"])
+        for g in imported.values():
+            items.append({
+                "type": g["type"], "tmdbId": g["tmdbId"], "tvdbId": g["tvdbId"], "is4k": g["is4k"],
+                "progress": 1, "size": 0, "left": 0, "speed": 0, "eta": None, "state": "imported",
+                "importedAt": int(g["at"] * 1000), "seeds": 0, "peers": 0, "count": 0,
+                "seasons": sorted(g["seasons"]), "episodes": len(g["episodes"]),
+            })
+
         STATE.snapshot = {
-            "version": 1,
+            "version": 2,
             "at": int(now * 1000),
             "qbit": STATE.qbit_ok,
             "items": items,

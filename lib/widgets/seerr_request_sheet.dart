@@ -534,6 +534,7 @@ class _SeerrRequestSheetState extends State<SeerrRequestSheet> {
       showSuccessSnackBar(context, t.seerr.requestSubmitted);
       // MaggioFlix: the "È disponibile" notification needs the permission on Android 13+.
       unawaited(MaggioflixAvailability.ensurePermission());
+      unawaited(MaggioflixAvailability.requestMade());
       return;
     } on SeerrApiException catch (e) {
       errorText = e.message;

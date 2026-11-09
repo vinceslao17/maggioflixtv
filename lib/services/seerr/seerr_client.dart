@@ -223,6 +223,12 @@ class SeerrClient {
     ),
   );
 
+  /// MaggioFlix: richieste di tutti (Seerr mostra quelle degli altri solo a chi
+  /// ha il permesso "Vedi richieste"; agli altri restituisce solo le proprie).
+  Future<Map<String, dynamic>?> getAllRequests({int take = 30, int skip = 0}) async => _asJsonMap(
+    await _request('GET', '/request', query: {'take': take, 'skip': skip, 'filter': 'all', 'sort': 'added'}),
+  );
+
   // MaggioFlix: dettagli grezzi per il calendario (prossimo episodio, stagioni sul server, date di uscita).
   Future<Map<String, dynamic>?> getMovieRaw(int tmdbId) async =>
       _asJsonMap(await _request('GET', '/movie/$tmdbId', query: {'language': _language}));
