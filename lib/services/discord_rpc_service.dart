@@ -13,6 +13,7 @@ import '../utils/platform_detector.dart';
 import '../utils/media_server_http_client.dart';
 import 'plezy_server.dart';
 import 'settings_service.dart';
+import '../maggioflix_config.dart';
 
 const Duration _defaultPosterCacheTtl = Duration(hours: 3);
 const Duration _maxPosterCacheTtl = Duration(days: 365);
@@ -102,6 +103,8 @@ class DiscordRPCService {
   final DiscordRPC Function() _rpcFactory;
 
   static bool get isAvailable {
+    // MaggioFlix: Rich Presence usa l'applicazione Discord registrata da Plezy.
+    if (!maggioflixUsesPlezyServices) return false;
     if (!PlatformDetector.isDesktopOS()) {
       return false;
     }

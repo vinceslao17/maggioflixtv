@@ -1,6 +1,6 @@
 
-PRODUCT_NAME = Plezy
+PRODUCT_NAME = MaggioFlix
 
-PRODUCT_BUNDLE_IDENTIFIER = com.edde746.plezy
+PRODUCT_BUNDLE_IDENTIFIER = com.maggioflix.desktop
 
-PRODUCT_COPYRIGHT = Copyright © 2025 edde746
+PRODUCT_COPYRIGHT = MaggioFlix, based on Plezy by edde746 (GPL-3.0)

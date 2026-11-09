@@ -1,14 +1,17 @@
-name: MaggioFlix Android
+name: MaggioFlix
 
-# Compila l'APK di MaggioFlix a ogni modifica su main (o a mano dalla scheda
-# Actions) e lo pubblica come release, così l'ultima versione si scarica
-# sempre dallo stesso indirizzo:
-#   https://github.com/<account>/<repo>/releases/latest/download/maggioflix-arm64-v8a.apk
-#   https://github.com/<account>/<repo>/releases/latest/download/maggioflix-armeabi-v7a.apk
+# Compila MaggioFlix per Android (TV e telefono), Windows e Mac a ogni modifica
+# su main (o a mano dalla scheda Actions) e pubblica tutto nella stessa release,
+# così l'ultima versione si scarica sempre dallo stesso indirizzo:
+#   https://github.com/<account>/<repo>/releases/latest/download/<file>
 #
-# Firma: servono i secret MAGGIOFLIX_KEYSTORE_BASE64 e MAGGIOFLIX_KEYSTORE_PASSWORD
-# (alias della chiave: maggioflix). Senza una firma fissa gli aggiornamenti non
-# si installerebbero sopra la versione precedente.
+# File: maggioflix-arm64-v8a.apk, maggioflix-armeabi-v7a.apk,
+#       maggioflix-windows-installer.exe, maggioflix-windows-x64-portable.zip,
+#       maggioflix-macos.dmg
+#
+# Firma Android: secret MAGGIOFLIX_KEYSTORE_BASE64 e MAGGIOFLIX_KEYSTORE_PASSWORD
+# (alias maggioflix). Windows e Mac non sono firmati: al primo avvio il sistema
+# chiede conferma.
 
 on:
   workflow_dispatch:
@@ -18,14 +21,12 @@ on:
       - "**.md"
       - "website/**"
       - "ios/**"
-      - "macos/**"
       - "tvos/**"
-      - "windows/**"
       - "linux/**"
       - "Casks/**"
 
 concurrency:
-  group: maggioflix-android
+  group: maggioflix-build
   cancel-in-progress: true
 
 env:
@@ -35,8 +36,6 @@ jobs:
   apk:
     if: github.repository != 'edde746/plezy'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -108,16 +107,136 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: maggioflix-apk
-          path: dist/*.apk
+          name: android
+          path: dist/*
+
+  windows:
+    if: github.repository != 'edde746/plezy'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Cache native dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: build/windows/x64/_deps
+          key: maggioflix-windows-native-${{ hashFiles('windows/CMakeLists.txt', 'mpv-build.lock.json') }}
+
+      - name: Install dependencies
+        shell: pwsh
+        run: flutter pub get --enforce-lockfile --no-example
+
+      - name: Install patched Flutter engine
+        shell: pwsh
+        run: |
+          flutter precache --windows
+          .\windows\tool\install-patched-engine.ps1
+
+      - name: Build Windows
+        shell: pwsh
+        run: flutter build windows --release --dart-define=GIT_COMMIT=${{ github.sha }}
+
+      - name: Package installer and portable zip
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath dist\maggioflix-windows-x64-portable.zip
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DVersion=$version" windows\maggioflix-installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup non riuscito" }
+          Get-ChildItem dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows
+          path: dist/*
+
+  macos:
+    if: github.repository != 'edde746/plezy'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Cache CocoaPods
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            macos/Pods
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods
+          key: maggioflix-macos-pods-${{ hashFiles('**/Podfile.lock') }}
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile --no-example
+
+      - name: Build macOS
+        run: flutter build macos --release --dart-define=GIT_COMMIT=${{ github.sha }}
+
+      - name: Package DMG
+        run: |
+          APP="build/macos/Build/Products/Release/MaggioFlix.app"
+          test -d "$APP"
+          # Firma ad-hoc (nessun account sviluppatore): serve perché il Mac lo apra.
+          codesign --verify --deep --verbose=2 "$APP" || codesign --force --deep --sign - "$APP"
+          mkdir -p dist dmg-staging
+          cp -R "$APP" dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -format UDZO -srcfolder dmg-staging -volname "MaggioFlix" dist/maggioflix-macos.dmg
+          ls -lh dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: macos
+          path: dist/*
+
+  release:
+    needs: [apk, windows, macos]
+    # L'APK esce comunque; Windows e Mac si aggiungono se la loro build è riuscita.
+    if: ${{ !cancelled() && needs.apk.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Download builds
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          ls -lh dist
           version=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
           tag="maggioflix-v${version}-${GITHUB_RUN_NUMBER}"
-          gh release create "$tag" dist/*.apk \
+          gh release create "$tag" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "MaggioFlix ${version} (build ${GITHUB_RUN_NUMBER})" \
