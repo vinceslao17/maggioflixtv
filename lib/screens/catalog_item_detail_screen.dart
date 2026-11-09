@@ -882,6 +882,57 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
     return values.isEmpty ? null : values.join(' • ');
   }
 
+  /// MaggioFlix, telefono: stato della richiesta (con avanzamento dal vivo) a tutta
+  /// larghezza e, per le serie, "Altre stagioni" sotto. Senza richiesta: "Richiedi".
+  Widget? _buildMfRequestRow(BuildContext hostContext, CatalogItem item, bool available, bool showState) {
+    final seerr = _requestSource;
+    final tmdbId = item.ids.tmdb;
+    if (seerr == null || tmdbId == null) return null;
+    void openSheet() => unawaited(
+      showSeerrRequestSheet(hostContext, source: seerr, kind: item.kind, tmdbId: tmdbId, title: item.title),
+    );
+    const padding = EdgeInsets.symmetric(horizontal: 20, vertical: 14);
+    if (!showState) {
+      if (!_canRequest) return null;
+      return SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: openSheet,
+          style: FilledButton.styleFrom(padding: padding),
+          icon: const AppIcon(Symbols.library_add_rounded, fill: 1),
+          label: Text(t.seerr.request),
+        ),
+      );
+    }
+    final pill = MaggioflixLiveStatusPill(
+      kind: item.kind,
+      tmdbId: tmdbId,
+      tvdbId: item.ids.tvdb,
+      available: available,
+      finishing: _mfFinishing,
+      expand: true,
+    );
+    if (item.kind == MediaKind.movie) return SizedBox(width: double.infinity, child: pill);
+    final theme = Theme.of(hostContext);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        pill,
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: openSheet,
+          style: OutlinedButton.styleFrom(
+            padding: padding,
+            foregroundColor: theme.colorScheme.onSurface,
+            side: BorderSide(color: theme.colorScheme.onSurface.withValues(alpha: 0.35)),
+          ),
+          icon: const AppIcon(Symbols.playlist_add_rounded, fill: 1),
+          label: Text(maggioflixMoreSeasonsLabel()),
+        ),
+      ],
+    );
+  }
+
   /// Headline score, leaderboard context, audience counts, availability and
   /// release-shape facts that fit the established compact chip treatment.
   Widget? _buildStatsChips() {
@@ -954,8 +1005,11 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
       if (server.availability4k case final availability?) {
         add(availabilityLabel(availability, is4k: true));
       }
-      if (server.request case final request?) add(requestStateLabel(request, is4k: false));
-      if (server.request4k case final request?) add(requestStateLabel(request, is4k: true));
+      // MaggioFlix: lo stato della richiesta lo mostra già la pillola.
+      if (_requestSource == null) {
+        if (server.request case final request?) add(requestStateLabel(request, is4k: false));
+        if (server.request4k case final request?) add(requestStateLabel(request, is4k: true));
+      }
       if (server.availableSeasons case final available? when server.totalSeasons != null) {
         add(t.explore.badge.seasonsAvailable(available: available, total: server.totalSeasons!));
       }
@@ -1466,6 +1520,12 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
           CatalogRequestState.pending || CatalogRequestState.approved || CatalogRequestState.processing => true,
           _ => false,
         };
+    // MaggioFlix: sul telefono lo stato della richiesta va su una riga sua, a tutta
+    // larghezza, sotto locandina e titolo (accanto alla locandina non ci sta).
+    final mfShowState = _requestSource != null &&
+        tmdbId != null &&
+        (mfAvailable || mfRequested || _mfLivePresent || _mfFinishing);
+    final mfCompact = !PlatformDetector.isTV() && MediaQuery.sizeOf(context).width < 600;
     // Subscriptions for [_requestSource]: the source itself (disconnect) and
     // the permission mask (grant/revoke), both adopted in place upstream.
     context.select<CatalogSourcesProvider, SeerrCatalogSource?>((sources) => sources.seerrSource);
@@ -1603,6 +1663,7 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
                                                       : t.explore.addToWatchlist,
                                                   onPressed: () => unawaited(_toggleWatchlist()),
                                                 ),
+                                              if (!mfCompact) ...[
                                               if (_requestSource != null &&
                                                   tmdbId != null &&
                                                   (mfAvailable || mfRequested || _mfLivePresent || _mfFinishing))
@@ -1704,6 +1765,7 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
                                                     label: Text(t.seerr.request),
                                                   ),
                                                 ),
+                                              ],
                                               if (_hasTrailer)
                                                 FocusableAction(
                                                   debugLabel: 'catalog_trailer',
@@ -1718,6 +1780,10 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
                                   ),
                                 ],
                               ),
+                              if (mfCompact)
+                                if (_buildMfRequestRow(hostContext, item, mfAvailable, mfShowState)
+                                    case final Widget requestRow)
+                                  ...[const SizedBox(height: 20), requestRow],
                               if (_buildStatsChips() case final Widget chips) ...[const SizedBox(height: 20), chips],
                               if (item.overview?.trim() case final overview? when overview.isNotEmpty) ...[
                                 const SizedBox(height: 24),

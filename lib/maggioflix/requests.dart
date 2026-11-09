@@ -1612,6 +1612,9 @@ class MaggioflixLiveStatusPill extends StatefulWidget {
   /// Messa a fuoco col telecomando.
   final bool focused;
 
+  /// A tutta larghezza (telefono); altrimenti larga quanto il testo, fino a 420.
+  final bool expand;
+
   const MaggioflixLiveStatusPill({
     super.key,
     required this.kind,
@@ -1620,6 +1623,7 @@ class MaggioflixLiveStatusPill extends StatefulWidget {
     required this.available,
     this.finishing = false,
     this.focused = false,
+    this.expand = false,
   });
 
   @override
@@ -1729,7 +1733,7 @@ class _MaggioflixLiveStatusPillState extends State<MaggioflixLiveStatusPill> {
     final content = Padding(
       padding: EdgeInsets.symmetric(horizontal: 18, vertical: subtitle == null ? 10 : 7),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
         children: [
           AppIcon(icon, fill: 1, size: 20, color: accent),
           const SizedBox(width: 10),
@@ -1769,7 +1773,11 @@ class _MaggioflixLiveStatusPillState extends State<MaggioflixLiveStatusPill> {
       label: subtitle == null ? title : '$title, $subtitle',
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
-        constraints: BoxConstraints(minHeight: 44, minWidth: fill != null ? 210 : 0),
+        constraints: BoxConstraints(
+          minHeight: widget.expand ? 52 : 44,
+          minWidth: fill != null && !widget.expand ? 210 : 0,
+          maxWidth: widget.expand ? double.infinity : 420,
+        ),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
