@@ -87,6 +87,7 @@ class State:
         self.torrents: dict[str, dict] = {}
         self.rid = 0
         self.qbit_ok = False
+        self.qbit_error: str | None = None
         self.last_poll = 0.0
         # hash -> {"type", "tmdbId", "tvdbId", "is4k", "inQueue", "seasons", "episodes"}
         self.mapping: dict[str, dict] = {}
@@ -128,10 +129,21 @@ class Qbit:
             return  # qBittorrent senza password per la rete locale
         data = urllib.parse.urlencode({"username": self.user, "password": self.password}).encode()
         req = urllib.request.Request(self.url + "/api/v2/auth/login", data=data, method="POST")
-        with self._open(req) as resp:
-            body = resp.read().decode(errors="replace").strip()
-        if body != "Ok.":
-            raise RuntimeError(f"login qBittorrent rifiutato: {body!r}")
+        req.add_header("Origin", self.url)
+        try:
+            with self._open(req) as resp:
+                body = resp.read().decode(errors="replace").strip()
+        except urllib.error.HTTPError as e:
+            if e.code == 403:
+                raise RuntimeError("qBittorrent ha bloccato l'IP del ponte (troppi tentativi falliti)") from None
+            if e.code == 401:
+                raise RuntimeError("qBittorrent rifiuta la richiesta (401): controlla 'Host header validation'") from None
+            raise
+        has_sid = any(c.name.upper() in ("SID", "QBT_SID") or c.name.upper().endswith("_SID") for c in self.jar)
+        if body == "Fails.":
+            raise RuntimeError("login qBittorrent rifiutato: utente o password sbagliati (QBIT_USER/QBIT_PASS)")
+        if body != "Ok." and not has_sid:
+            raise RuntimeError(f"login qBittorrent non riuscito: {body[:80]!r}")
 
     def get_json(self, path: str):
         for attempt in range(2):
@@ -177,13 +189,17 @@ def poll_qbit() -> None:
                 if not STATE.qbit_ok:
                     log.info("qBittorrent collegato (%d torrent)", len(STATE.torrents))
                 STATE.qbit_ok = True
+                STATE.qbit_error = None
                 STATE.last_poll = time.time()
             backoff = POLL_SECONDS
         except Exception as e:  # noqa: BLE001 - qualsiasi errore: riprova
+            message = f"{type(e).__name__}: {e}" if not isinstance(e, RuntimeError) else str(e)
             with STATE.lock:
-                if STATE.qbit_ok:
-                    log.warning("qBittorrent non raggiungibile: %s", e)
+                # Si scrive nel log ogni errore nuovo (anche il primo), senza ripeterlo.
+                if STATE.qbit_ok or message != STATE.qbit_error:
+                    log.warning("qBittorrent non raggiungibile (%s): %s", QBIT_URL, message)
                 STATE.qbit_ok = False
+                STATE.qbit_error = message
                 STATE.rid = 0
             logged_in = False
             backoff = min(backoff * 2, 30)
@@ -606,6 +622,7 @@ class Handler(BaseHTTPRequestHandler):
             with STATE.lock:
                 self._send(200, {
                     "ok": STATE.qbit_ok,
+                    "qbitError": STATE.qbit_error,
                     "plex": STATE.plex_ok if PLEX_URL else None,
                     "torrents": len(STATE.torrents),
                     "mapped": len(STATE.mapping),
