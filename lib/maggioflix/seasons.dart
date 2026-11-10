@@ -39,6 +39,9 @@ class MfSeasonInfo {
   /// C'è una richiesta aperta che la comprende.
   final bool requested;
 
+  /// Plex: episodi della stagione presenti nell'app (null se Plex non è raggiungibile).
+  final int? plexEpisodes;
+
   const MfSeasonInfo({
     required this.number,
     required this.name,
@@ -49,22 +52,42 @@ class MfSeasonInfo {
     this.monitored = false,
     this.seerrStatus = 1,
     this.requested = false,
+    this.plexEpisodes,
   });
 
   int get _count => total != null && total! > 0 ? total! : episodes;
 
+  /// Episodi davvero presenti: prima Plex (quello che si vede nell'app), poi i
+  /// file di Sonarr. Null: il server non lo sa, si usa Seerr (che si accorge
+  /// tardi delle cancellazioni).
+  int? get _have => plexEpisodes ?? files;
+
+  /// Lo stato viene dal server, non da Seerr.
+  bool get serverKnown => _have != null;
+
   /// Tutti gli episodi sono sul server.
   bool get isComplete {
-    final f = files;
-    if (f != null && f > 0) return f >= _count;
+    final have = _have;
+    if (have != null) return have > 0 && have >= _count;
     return seerrStatus == 5;
   }
 
   /// Almeno un episodio sul server.
-  bool get hasSome => (files ?? 0) > 0 || seerrStatus >= 4;
+  bool get hasSome {
+    final have = _have;
+    if (have != null) return have > 0;
+    return seerrStatus >= 4;
+  }
 
   /// Già richiesta o seguita dal server: non serve richiederla.
-  bool get covered => isComplete || hasSome || monitored || requested || seerrStatus >= 2;
+  bool get covered =>
+      isComplete ||
+      hasSome ||
+      monitored ||
+      requested ||
+      seerrStatus == 2 ||
+      seerrStatus == 3 ||
+      (!serverKnown && seerrStatus >= 4);
 }
 
 enum MfSeasonState { available, partial, downloading, importing, requested, missing }
@@ -97,13 +120,13 @@ MfSeasonStatus mfSeasonStatus(MfSeasonInfo s, MfLiveItem? live) {
     return MfSeasonStatus(MfSeasonState.available, _tr('Disponibile', 'Available'), mfGreen, Symbols.check_circle_rounded);
   }
   if (s.hasSome) {
-    final files = s.files;
-    final label = files != null && files > 0
-        ? _tr('$files di ${s._count} episodi', '$files of ${s._count} episodes')
+    final have = s._have;
+    final label = have != null && have > 0
+        ? _tr('$have di ${s._count} episodi', '$have of ${s._count} episodes')
         : _tr('In parte', 'Partial');
     return MfSeasonStatus(MfSeasonState.partial, label, mfGreen, Symbols.incomplete_circle_rounded);
   }
-  if (s.monitored || s.requested || s.seerrStatus >= 2) {
+  if (s.monitored || s.requested || s.seerrStatus == 2 || s.seerrStatus == 3) {
     final notOut = s.aired != null && s.aired == 0;
     return MfSeasonStatus(
       MfSeasonState.requested,
@@ -135,12 +158,24 @@ abstract final class MaggioflixSeasons {
   static Future<List<MfSeasonInfo>> load(SeerrCatalogSource source, int tmdbId, {int? tvdbId}) async {
     final rawFuture = source.client.getTvRaw(tmdbId);
     Map<String, Map<String, dynamic>> sonarr = {};
+    Map<String, int>? plex;
     try {
       final query = 'tmdb=$tmdbId${tvdbId != null ? '&tvdb=$tvdbId' : ''}';
       final json = await maggioflixBridgeGet(source, '/api/series?$query');
       if (json is Map && json['seasons'] is List) {
         for (final s in json['seasons'] as List) {
           if (s is Map<String, dynamic> && _int(s['season']) != null) sonarr['${_int(s['season'])}'] = s;
+        }
+      }
+      final p = json is Map ? json['plex'] : null;
+      if (p is Map && p['plex'] == true) {
+        plex = {};
+        final seasons = p['seasons'];
+        if (seasons is Map) {
+          seasons.forEach((k, v) {
+            final n = _int(v);
+            if (n != null) plex!['$k'] = n;
+          });
         }
       }
     } catch (e) {
@@ -164,7 +199,7 @@ abstract final class MaggioflixSeasons {
         for (final r in mediaInfo['requests'] as List) {
           if (r is! Map || r['is4k'] == true) continue;
           final status = _int(r['status']) ?? 0;
-          if (status == 3 || status == 4) continue; // rifiutata o fallita
+          if (status != 1 && status != 2) continue; // solo richieste aperte (non rifiutate, fallite o concluse)
           if (r['seasons'] is List) {
             for (final s in r['seasons'] as List) {
               final n = s is Map ? _int(s['seasonNumber']) : null;
@@ -196,6 +231,7 @@ abstract final class MaggioflixSeasons {
             monitored: son?['monitored'] == true,
             seerrStatus: seerrStatus[n] ?? 1,
             requested: requested.contains(n),
+            plexEpisodes: plex == null ? null : (plex['$n'] ?? 0),
           ),
         );
       }

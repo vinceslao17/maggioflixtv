@@ -114,6 +114,10 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
   bool _mfFinishing = false;
   Timer? _mfReloadTimer;
 
+  /// MaggioFlix: il film c'è davvero su Plex? (null = non si sa, si usa Seerr)
+  bool? _mfMovieOnPlex;
+  bool _mfMovieChecked = false;
+
   /// MaggioFlix: stagioni della serie con il loro stato sul server.
   List<MfSeasonInfo>? _mfSeasons;
   bool _mfSeasonsLoading = false;
@@ -200,6 +204,20 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
     unawaited(Future<void>.delayed(const Duration(seconds: 2), _loadMfSeasons));
   }
 
+  Future<void> _loadMfMovieOnPlex() async {
+    final source = _requestSource;
+    final tmdbId = _item.ids.tmdb;
+    if (!mounted || _item.kind != MediaKind.movie || source == null || tmdbId == null) return;
+    try {
+      final json = await maggioflixBridgeGet(source, '/api/movie?tmdb=$tmdbId');
+      if (!mounted || json is! Map || json['plex'] != true) return;
+      final found = json['found'] == true;
+      if (found != _mfMovieOnPlex) setState(() => _mfMovieOnPlex = found);
+    } catch (e) {
+      appLogger.w('MaggioFlix: presenza su Plex non verificata', error: e);
+    }
+  }
+
   Future<void> _loadMfSeasons() async {
     final item = _item;
     final source = _requestSource;
@@ -228,6 +246,7 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
       final hadState = _mfLastLiveState != null || live != null;
       _mfLastLiveState = live?.state;
       if (hadState && _mfSeasons != null) unawaited(_loadMfSeasons());
+      if (hadState && _mfMovieChecked) unawaited(_loadMfMovieOnPlex());
     }
     final finished = _mfLivePresent && !present && MaggioflixLive.instance.reachable;
     if (present != _mfLivePresent || finished) {
@@ -1570,9 +1589,9 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
     final onWatchlist = _isOnWatchlist;
     final tmdbId = item.ids.tmdb;
     // MaggioFlix: titolo già disponibile o già richiesto -> scritta al posto del pulsante.
-    final mfAvailable = item.serverState?.availability == CatalogAvailability.available;
+    final mfSeerrAvailable = item.serverState?.availability == CatalogAvailability.available;
     final mfRequested =
-        !mfAvailable &&
+        !mfSeerrAvailable &&
         switch (item.serverState?.request) {
           CatalogRequestState.pending || CatalogRequestState.approved || CatalogRequestState.processing => true,
           _ => false,
@@ -1583,18 +1602,32 @@ class _CatalogItemDetailScreenState extends State<CatalogItemDetailScreen> {
       _mfSeasonsRequested = true;
       WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_loadMfSeasons()));
     }
+    if (!_mfMovieChecked && item.kind == MediaKind.movie && _requestSource != null && tmdbId != null) {
+      _mfMovieChecked = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_loadMfMovieOnPlex()));
+    }
     final mfSeasons = item.kind == MediaKind.movie ? null : _mfSeasons;
     final mfSummary = mfSeasons == null || mfSeasons.isEmpty ? null : mfSeasonsSummary(mfSeasons);
     final mfAllSeasons = mfSummary != null && mfSummary.complete == mfSummary.total;
-    final mfPartial = item.kind != MediaKind.movie &&
-        (mfSummary != null
-            ? !mfAllSeasons && (mfSummary.complete > 0 || mfSummary.any)
-            : item.serverState?.availability == CatalogAvailability.partiallyAvailable);
+    // Disponibile secondo il server (Plex tramite il ponte) quando lo sappiamo:
+    // Seerr si accorge tardi dei contenuti cancellati.
+    final bool mfAvailable;
+    final bool mfPartial;
+    if (item.kind == MediaKind.movie) {
+      mfAvailable = _mfMovieOnPlex ?? mfSeerrAvailable;
+      mfPartial = false;
+    } else if (mfSummary != null) {
+      mfAvailable = mfAllSeasons;
+      mfPartial = !mfAllSeasons && (mfSummary.complete > 0 || mfSummary.any);
+    } else {
+      mfAvailable = mfSeerrAvailable;
+      mfPartial = item.serverState?.availability == CatalogAvailability.partiallyAvailable;
+    }
     final mfPartialDetail = mfSummary == null ? null : mfSeasonsCountLabel(mfSummary.complete, mfSummary.total);
-    final mfAvailableNow = (mfAvailable && !mfPartial) || mfAllSeasons;
+    final mfAvailableNow = mfAvailable;
     final mfShowState = _requestSource != null &&
         tmdbId != null &&
-        (mfAvailable || mfRequested || _mfLivePresent || _mfFinishing || mfPartial || mfAllSeasons);
+        (mfAvailable || mfRequested || _mfLivePresent || _mfFinishing || mfPartial);
     final mfCompact = !PlatformDetector.isTV() && MediaQuery.sizeOf(context).width < 600;
     // Subscriptions for [_requestSource]: the source itself (disconnect) and
     // the permission mask (grant/revoke), both adopted in place upstream.

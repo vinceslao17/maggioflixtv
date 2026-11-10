@@ -712,6 +712,120 @@ def build_calendar(start: str, end: str) -> dict:
     return {"start": start, "end": end, "items": ordered, "errors": errors}
 
 
+# ---------------------------------------------------------------------------
+# Plex come fonte di verita': cosa c'e' davvero nell'app (anche dopo una cancellazione)
+# ---------------------------------------------------------------------------
+
+_plex_index: dict = {"at": 0.0, "movie": {}, "tv_tmdb": {}, "tv_tvdb": {}}
+_plex_index_lock = threading.Lock()
+
+
+def plex_index(max_age: float = 300, force: bool = False) -> dict:
+    """Indice TMDB/TVDB -> ratingKey di tutte le librerie film e serie di Plex."""
+    with _plex_index_lock:
+        if not force and time.time() - _plex_index["at"] < max_age:
+            return _plex_index
+        movie: dict = {}
+        tv_tmdb: dict = {}
+        tv_tvdb: dict = {}
+        sections = (plex_get("/library/sections").get("MediaContainer") or {}).get("Directory") or []
+        for sec in sections:
+            kind = sec.get("type")
+            if kind not in ("movie", "show"):
+                continue
+            start = 0
+            while True:
+                data = plex_get(
+                    f"/library/sections/{sec.get('key')}/all?includeGuids=1"
+                    f"&X-Plex-Container-Start={start}&X-Plex-Container-Size=500",
+                    timeout=60,
+                )
+                mc = data.get("MediaContainer") or {}
+                items = mc.get("Metadata") or []
+                for it in items:
+                    tmdb, tvdb = _guid_ids(it)
+                    rk = it.get("ratingKey")
+                    if kind == "movie":
+                        if tmdb:
+                            movie.setdefault(tmdb, []).append(rk)
+                    else:
+                        if tmdb:
+                            tv_tmdb.setdefault(tmdb, []).append(rk)
+                        if tvdb:
+                            tv_tvdb.setdefault(tvdb, []).append(rk)
+                start += len(items)
+                total = _int(mc.get("totalSize")) or start
+                if not items or start >= total:
+                    break
+        _plex_index.update(at=time.time(), movie=movie, tv_tmdb=tv_tmdb, tv_tvdb=tv_tvdb)
+        log.info("Indice Plex: %d film, %d serie", len(movie), len({k for ks in list(tv_tmdb.values()) + list(tv_tvdb.values()) for k in ks}))
+        return _plex_index
+
+
+def _plex_exists(rating_key) -> bool:
+    try:
+        plex_get(f"/library/metadata/{rating_key}", timeout=10)
+        return True
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return False
+        raise
+
+
+def _plex_keys(kind: str, tmdb: int | None, tvdb: int | None) -> list:
+    def lookup(idx: dict) -> list:
+        if kind == "movie":
+            keys = list(idx["movie"].get(tmdb, [])) if tmdb else []
+        else:
+            keys = list(idx["tv_tvdb"].get(tvdb, [])) if tvdb else []
+            keys += [k for k in (idx["tv_tmdb"].get(tmdb, []) if tmdb else []) if k not in keys]
+        return keys
+
+    idx = plex_index()
+    keys = lookup(idx)
+    if not keys and time.time() - idx["at"] > 60:
+        keys = lookup(plex_index(force=True))  # magari e' appena arrivato
+    return keys
+
+
+def plex_movie(tmdb: int) -> dict:
+    """Il film c'e' su Plex? Controllato al momento: se e' stato cancellato si vede subito."""
+    if not (PLEX_URL and PLEX_TOKEN):
+        return {"plex": False}
+    try:
+        keys = [k for k in _plex_keys("movie", tmdb, None) if _plex_exists(k)]
+        return {"plex": True, "found": bool(keys)}
+    except Exception as e:  # noqa: BLE001
+        log.warning("Plex non raggiungibile per il film %s: %s", tmdb, e)
+        return {"plex": False}
+
+
+def plex_show(tmdb: int | None, tvdb: int | None) -> dict:
+    """Episodi presenti su Plex per ogni stagione della serie."""
+    if not (PLEX_URL and PLEX_TOKEN):
+        return {"plex": False}
+    try:
+        seasons: dict[str, int] = {}
+        found = False
+        for rk in _plex_keys("tv", tmdb, tvdb):
+            try:
+                children = (plex_get(f"/library/metadata/{rk}/children", timeout=15).get("MediaContainer") or {})
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    continue  # serie cancellata da Plex
+                raise
+            found = True
+            for c in children.get("Metadata") or []:
+                n = _int(c.get("index"))
+                if n is None:
+                    continue
+                seasons[str(n)] = max(seasons.get(str(n), 0), _int(c.get("leafCount")) or 0)
+        return {"plex": True, "found": found, "seasons": seasons}
+    except Exception as e:  # noqa: BLE001
+        log.warning("Plex non raggiungibile per la serie %s/%s: %s", tmdb, tvdb, e)
+        return {"plex": False}
+
+
 def _all_series(url: str, key: str) -> list:
     return cached(f"series:{url}", 15, lambda: arr_get(url, key, "/api/v3/series") or [])
 
@@ -797,7 +911,16 @@ class Handler(BaseHTTPRequestHandler):
             if not tmdb and not tvdb:
                 self._send(400, {"error": "tmdb o tvdb"})
                 return
-            self._send(200, build_series(tmdb, tvdb))
+            result = build_series(tmdb, tvdb)
+            result["plex"] = plex_show(tmdb or result.get("tmdbId"), tvdb or result.get("tvdbId"))
+            self._send(200, result)
+            return
+        if path == "/api/movie":
+            tmdb = _int(arg("tmdb"))
+            if not tmdb:
+                self._send(400, {"error": "tmdb"})
+                return
+            self._send(200, plex_movie(tmdb))
             return
         self._send(404, {"error": "not found"})
 
