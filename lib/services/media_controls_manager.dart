@@ -260,6 +260,9 @@ class MediaControlsManager {
   /// keeps audio alive with a `mediaPlayback` foreground service and shows a
   /// MediaStyle notification for the session. No-op on other platforms.
   Future<void> setBackgroundMode(bool enabled) async {
+    // MaggioFlix: niente servizio in primo piano per la musica (il permesso è
+    // tolto dal manifest), quindi la modalità in sottofondo resta spenta.
+    enabled = false;
     try {
       await OsMediaControls.setBackgroundMode(enabled);
       appLogger.d('Media controls background mode: $enabled');
