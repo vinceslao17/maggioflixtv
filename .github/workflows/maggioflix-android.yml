@@ -97,6 +97,11 @@ jobs:
         # (1000 + build) così Android accetta l'aggiornamento sopra le versioni 2.x.
         run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --build-name=3.${{ github.run_number }}.0 --build-number=$((1000 + ${{ github.run_number }})) --dart-define=GIT_COMMIT=${{ github.sha }} --dart-define=MAGGIOFLIX_BUILD=${{ github.run_number }}
 
+      - name: Build App Bundle (Google Play)
+        # Per il Play Store serve l'AAB. versionCode 3000 + build: mai più basso
+        # dell'APK installato da GitHub (arm64 = 2000 + 1000 + build).
+        run: flutter build appbundle --release --build-name=3.${{ github.run_number }}.0 --build-number=$((3000 + ${{ github.run_number }})) --dart-define=GIT_COMMIT=${{ github.sha }} --dart-define=MAGGIOFLIX_BUILD=${{ github.run_number }}
+
       - name: Clean up keystore
         if: always()
         run: rm -f android/app/upload-keystore.jks android/key.properties
@@ -106,6 +111,7 @@ jobs:
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/maggioflix-arm64-v8a.apk
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/maggioflix-armeabi-v7a.apk
+          cp build/app/outputs/bundle/release/app-release.aab dist/maggioflix-google-play.aab
           ls -lh dist
 
       - name: Upload artifact
