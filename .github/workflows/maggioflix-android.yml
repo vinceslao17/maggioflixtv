@@ -93,7 +93,9 @@ jobs:
           EOF
 
       - name: Build APKs
-        run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --dart-define=GIT_COMMIT=${{ github.sha }} --dart-define=MAGGIOFLIX_BUILD=${{ github.run_number }}
+        # Versione MaggioFlix: v3.<numero della build>. Il versionCode cresce sempre
+        # (1000 + build) così Android accetta l'aggiornamento sopra le versioni 2.x.
+        run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --build-name=3.${{ github.run_number }}.0 --build-number=$((1000 + ${{ github.run_number }})) --dart-define=GIT_COMMIT=${{ github.sha }} --dart-define=MAGGIOFLIX_BUILD=${{ github.run_number }}
 
       - name: Clean up keystore
         if: always()
@@ -145,12 +147,12 @@ jobs:
 
       - name: Build Windows
         shell: pwsh
-        run: flutter build windows --release --dart-define=GIT_COMMIT=${{ github.sha }} --dart-define=MAGGIOFLIX_BUILD=${{ github.run_number }}
+        run: flutter build windows --release --build-name=3.${{ github.run_number }}.0 --dart-define=GIT_COMMIT=${{ github.sha }} --dart-define=MAGGIOFLIX_BUILD=${{ github.run_number }}
 
       - name: Package installer and portable zip
         shell: pwsh
         run: |
-          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
+          $version = "3.$env:GITHUB_RUN_NUMBER.0"
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath dist\maggioflix-windows-x64-portable.zip
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
@@ -193,7 +195,7 @@ jobs:
         run: flutter pub get --enforce-lockfile --no-example
 
       - name: Build macOS
-        run: flutter build macos --release --dart-define=GIT_COMMIT=${{ github.sha }} --dart-define=MAGGIOFLIX_BUILD=${{ github.run_number }}
+        run: flutter build macos --release --build-name=3.${{ github.run_number }}.0 --build-number=$((1000 + ${{ github.run_number }})) --dart-define=GIT_COMMIT=${{ github.sha }} --dart-define=MAGGIOFLIX_BUILD=${{ github.run_number }}
 
       - name: Package DMG
         run: |
@@ -236,11 +238,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -lh dist
-          version=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
-          tag="maggioflix-v${version}-${GITHUB_RUN_NUMBER}"
+          plezy=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          tag="v3.${GITHUB_RUN_NUMBER}"
           gh release create "$tag" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "MaggioFlix ${version} (build ${GITHUB_RUN_NUMBER})" \
-            --notes "Basato su Plezy ${version} (https://github.com/edde746/plezy), licenza GPL-3.0. Commit: ${GITHUB_SHA}" \
+            --title "MaggioFlix v3.${GITHUB_RUN_NUMBER}" \
+            --notes "Basato su Plezy ${plezy} (https://github.com/edde746/plezy), licenza GPL-3.0. Commit: ${GITHUB_SHA}" \
             --latest

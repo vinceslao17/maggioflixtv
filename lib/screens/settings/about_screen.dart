@@ -25,12 +25,15 @@ class AboutScreen extends StatelessWidget {
     return FutureBuilder<PackageInfo>(
       future: _packageInfoFuture,
       builder: (context, snapshot) {
-        final baseVersion = snapshot.data?.version ?? '';
-        final appVersion = _maggioflixBuild.isEmpty ? baseVersion : '$baseVersion · build $_maggioflixBuild';
-        final release = _maggioflixBuild.isEmpty || baseVersion.isEmpty
+        // MaggioFlix: "3.26.0" -> "3.26", lo stesso nome della release su GitHub (v3.26).
+        var appVersion = snapshot.data?.version ?? '';
+        while (appVersion.split('.').length > 2 && appVersion.endsWith('.0')) {
+          appVersion = appVersion.substring(0, appVersion.length - 2);
+        }
+        final release = _maggioflixBuild.isEmpty || appVersion.isEmpty
             ? null
             : [
-                'GitHub maggioflix-v$baseVersion-$_maggioflixBuild',
+                'GitHub v$appVersion',
                 if (_gitCommit.length >= 7) _gitCommit.substring(0, 7),
               ].join(' · ');
         return FocusedScrollScaffold(
