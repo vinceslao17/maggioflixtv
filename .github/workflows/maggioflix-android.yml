@@ -252,3 +252,41 @@ jobs:
             --title "MaggioFlix v3.${GITHUB_RUN_NUMBER}" \
             --notes "Basato su Plezy ${plezy} (https://github.com/edde746/plezy), licenza GPL-3.0. Commit: ${GITHUB_SHA}" \
             --latest
+
+  play:
+    # Google Play, test interno: parte da solo se c'è il segreto PLAY_SERVICE_ACCOUNT_JSON.
+    needs: [apk]
+    if: ${{ !cancelled() && needs.apk.result == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - name: Check Google Play key
+        id: key
+        run: |
+          if [ -n "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nessun segreto PLAY_SERVICE_ACCOUNT_JSON: caricamento su Google Play saltato."
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: steps.key.outputs.ok == 'true'
+        with:
+          persist-credentials: false
+
+      - name: Download Android build
+        if: steps.key.outputs.ok == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: android
+          path: dist
+
+      - name: Upload to Google Play (internal testing)
+        if: steps.key.outputs.ok == 'true'
+        run: |
+          python3 -m venv /tmp/play
+          /tmp/play/bin/pip install --quiet "google-auth==2.*" "requests==2.*"
+          subject=$(git log -1 --pretty=%s)
+          /tmp/play/bin/python .github/scripts/play_upload.py dist/maggioflix-google-play.aab \
+            "MaggioFlix v3.${GITHUB_RUN_NUMBER}" "MaggioFlix v3.${GITHUB_RUN_NUMBER} – ${subject}"
