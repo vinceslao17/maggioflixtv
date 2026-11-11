@@ -15,6 +15,15 @@ name: MaggioFlix
 
 on:
   workflow_dispatch:
+    inputs:
+      amazon:
+        description: "Carica l'APK su Amazon Appstore (bozza)"
+        type: boolean
+        default: false
+      amazon_commit:
+        description: "Amazon: invia la bozza per la pubblicazione"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths-ignore:
@@ -290,3 +299,32 @@ jobs:
           subject=$(git log -1 --pretty=%s)
           /tmp/play/bin/python .github/scripts/play_upload.py dist/maggioflix-google-play.aab \
             "MaggioFlix v3.${GITHUB_RUN_NUMBER}" "MaggioFlix v3.${GITHUB_RUN_NUMBER} – ${subject}"
+
+  amazon:
+    # Amazon Appstore: solo a mano (Run workflow -> amazon), con i segreti
+    # AMAZON_CLIENT_ID e AMAZON_CLIENT_SECRET. Carica l'APK a 32 bit (gira anche
+    # sui Fire TV a 64 bit).
+    needs: [apk]
+    if: ${{ !cancelled() && needs.apk.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.amazon }}
+    runs-on: ubuntu-latest
+    env:
+      AMAZON_CLIENT_ID: ${{ secrets.AMAZON_CLIENT_ID }}
+      AMAZON_CLIENT_SECRET: ${{ secrets.AMAZON_CLIENT_SECRET }}
+      AMAZON_APP_ID: amzn1.devportal.mobileapp.c3a12f3af87a455d9671cee340a403df
+      AMAZON_COMMIT: ${{ inputs.amazon_commit && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Download Android build
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: android
+          path: dist
+
+      - name: Upload to Amazon Appstore
+        run: |
+          python3 -m venv /tmp/amz
+          /tmp/amz/bin/pip install --quiet "requests==2.*"
+          /tmp/amz/bin/python .github/scripts/amazon_upload.py dist/maggioflix-armeabi-v7a.apk
