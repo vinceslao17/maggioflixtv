@@ -36,7 +36,6 @@ import '../i18n/strings.g.dart';
 import '../maggioflix_config.dart';
 import '../maggioflix/requests.dart';
 import '../maggioflix/branding.dart';
-import '../maggioflix/calendar.dart';
 
 enum _LibraryNavSection { visible, hidden }
 
@@ -482,10 +481,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
   static const _kHiddenLibraries = 'hiddenLibraries';
   static const _kServerHeaderPrefix = 'serverHeader';
   // MaggioFlix: sottomenu Request (Cerca, Le mie richieste).
-  static const _kRequestBrowse = 'requestBrowse';
   static const _kMyRequests = 'myRequests';
-  static const _kCalendar = 'mfCalendar';
-  bool _requestExpanded = false;
   static const _kLibraryItemPrefix = 'library';
 
   bool _hiddenLibrariesExpanded = false;
@@ -691,7 +687,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
       _kHome,
       if (hasNowPlaying) _kNowPlaying,
       _kLibraries,
-      if (hasExplore) ...[_kExplore, _kRequestBrowse, _kMyRequests, _kCalendar],
+      if (hasExplore) ...[_kExplore, _kMyRequests],
       _kSearch,
       if (_showDownloads) _kDownloads,
       _kSettings,
@@ -787,10 +783,7 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
           ],
         ],
         if (hasLiveTv) 'liveTv',
-        if (hasExplore) ...[
-          _kExplore,
-          if (_requestExpanded && !isCollapsed) ...[_kRequestBrowse, _kMyRequests, _kCalendar],
-        ],
+        if (hasExplore) ...[_kExplore, _kMyRequests],
       ],
       if (_showDownloads) _kDownloads,
       _kSettings,
@@ -1159,116 +1152,32 @@ class SideNavigationRailState extends State<SideNavigationRail> with MountedSetS
     );
   }
 
-  /// MaggioFlix: Request come sottomenu con freccia, come le librerie dei
-  /// server: si apre su Cerca (la pagina Request) e Le mie richieste.
+  /// MaggioFlix: Esplora (catalogo) e Richieste, due voci semplici. Cerca,
+  /// Le mie richieste, Tutte e Calendario sono pillole dentro Richieste.
   Widget _buildRequestSection({required bool isCollapsed}) {
-    final t = tokens(context);
     final isRequestTab = widget.selectedTab == NavigationTabId.explore;
-    final label = Translations.of(context).navigation.explore;
-
-    Widget buildChevron(double opacity) {
-      return AppIcon(
-        _requestExpanded ? Symbols.expand_less_rounded : Symbols.expand_more_rounded,
-        fill: 1,
-        size: 18,
-        color: t.textMuted.withValues(alpha: t.textMuted.a * opacity),
-      );
-    }
-
     return Column(
       crossAxisAlignment: .start,
       children: [
-        NavigationRailItem(
+        _buildNavItem(
           icon: Symbols.library_add_rounded,
-          label: Text(
-            label,
-            style: TextStyle(fontSize: 14, fontWeight: isRequestTab ? FontWeight.w600 : FontWeight.w400),
-            overflow: .ellipsis,
-            maxLines: 1,
-          ),
-          labelColor: isRequestTab ? t.text : t.textMuted,
-          collapsedLabel: label,
-          trailing: buildChevron(1),
-          trailingBuilder: buildChevron,
+          selectedIcon: Symbols.library_add_rounded,
+          label: Translations.of(context).navigation.explore,
           isSelected: isRequestTab,
           isCollapsed: isCollapsed,
-          onTap: () => setState(() => _requestExpanded = !_requestExpanded),
+          onTap: () => widget.onDestinationSelected(NavigationTabId.explore),
           focusNode: _focusTracker.get(_kExplore),
-          suppressSelectedBackground: widget.isSidebarFocused,
-          focusAlpha: 0.08,
-          selectedFocusAlpha: 0.1,
-          onNavigateRight: widget.onNavigateToContent,
         ),
-        TweenAnimationBuilder<double>(
-          tween: Tween(end: (_requestExpanded && !isCollapsed) ? 1.0 : 0.0),
-          duration: expandDuration,
-          curve: expandCurve,
-          builder: (context, value, child) {
-            return ClipRect(
-              child: Align(alignment: .topCenter, heightFactor: value, child: child),
-            );
-          },
-          child: ExcludeFocus(
-            excluding: !_requestExpanded || isCollapsed,
-            child: Column(
-              mainAxisSize: .min,
-              crossAxisAlignment: .start,
-              children: [
-                const SizedBox(height: 4),
-                _buildRequestChild(
-                  focusKey: _kRequestBrowse,
-                  icon: Symbols.search_rounded,
-                  label: Translations.of(context).common.search,
-                  isSelected: isRequestTab,
-                  onTap: () => widget.onDestinationSelected(NavigationTabId.explore),
-                ),
-                _buildRequestChild(
-                  focusKey: _kMyRequests,
-                  icon: Symbols.list_alt_rounded,
-                  label: maggioflixMyRequestsLabel(),
-                  onTap: () => openMaggioflixRequests(context),
-                ),
-                _buildRequestChild(
-                  focusKey: _kCalendar,
-                  icon: Symbols.calendar_month_rounded,
-                  label: maggioflixCalendarLabel(),
-                  onTap: () => openMaggioflixCalendar(context),
-                ),
-              ],
-            ),
-          ),
+        _buildNavItem(
+          icon: Symbols.list_alt_rounded,
+          selectedIcon: Symbols.list_alt_rounded,
+          label: maggioflixRequestsLabel(),
+          isSelected: false,
+          isCollapsed: isCollapsed,
+          onTap: () => openMaggioflixRequests(context),
+          focusNode: _focusTracker.get(_kMyRequests),
         ),
       ],
-    );
-  }
-
-  Widget _buildRequestChild({
-    required String focusKey,
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    bool isSelected = false,
-  }) {
-    final t = tokens(context);
-    return NavigationRailItem(
-      icon: icon,
-      selectedIcon: icon,
-      label: Text(
-        label,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-          color: isSelected ? t.text : t.textMuted,
-        ),
-        overflow: .ellipsis,
-      ),
-      isSelected: isSelected,
-      onTap: onTap,
-      focusNode: _focusTracker.get(focusKey),
-      iconSize: 18,
-      expandedHeight: 40,
-      suppressSelectedBackground: widget.isSidebarFocused,
-      onNavigateRight: widget.onNavigateToContent,
     );
   }
 

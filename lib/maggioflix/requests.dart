@@ -17,7 +17,9 @@ import '../media/media_kind.dart';
 import '../models/catalog/catalog_item.dart';
 import '../providers/catalog_sources_provider.dart';
 import '../services/deep_links/deep_link_service.dart';
+import 'calendar.dart';
 import 'live.dart';
+import '../screens/catalog_search_screen.dart';
 import '../utils/platform_detector.dart';
 import '../services/catalog/seerr_catalog_source.dart';
 import '../utils/app_logger.dart';
@@ -242,6 +244,8 @@ String maggioflixRequestMoreLabel() => _tr('Richiedi altre stagioni', 'Request m
 String maggioflixRequestedLabel() => _tr('Richiesto', 'Requested');
 
 /// Etichetta del pulsante che apre "Le mie richieste".
+String maggioflixRequestsLabel() => _tr('Richieste', 'Requests');
+
 String maggioflixMyRequestsLabel() => _tr('Le mie richieste', 'My requests');
 
 /// Apre la pagina "Le mie richieste".
@@ -744,9 +748,18 @@ class MaggioflixRequestsScreen extends StatefulWidget {
   State<MaggioflixRequestsScreen> createState() => _MaggioflixRequestsScreenState();
 }
 
+enum _MfTvView { mine, all, calendar }
+
 class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
   final MfRequestsController _controller = MfRequestsController();
+
+  /// Richieste di tutti: si carica solo la prima volta che le apri.
+  MfRequestsController? _all;
+  final GlobalKey<MfMonthCalendarState> _calendar = GlobalKey<MfMonthCalendarState>();
+  _MfTvView _view = _MfTvView.mine;
   VoidCallback? _releaseLive;
+
+  MfRequestsController get _current => _view == _MfTvView.all ? (_all ?? _controller) : _controller;
 
   @override
   void initState() {
@@ -771,6 +784,8 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
     _releaseLive?.call();
     _controller.removeListener(_changed);
     _controller.dispose();
+    _all?.removeListener(_changed);
+    _all?.dispose();
     super.dispose();
   }
 
@@ -778,23 +793,87 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
     if (mounted) setState(() {});
   }
 
+  void _select(_MfTvView view) {
+    if (view == _view) return;
+    if (view == _MfTvView.all && _all == null) {
+      _all = MfRequestsController(scope: MfRequestsScope.all, follow: _controller)..addListener(_changed);
+      _all!.bind(_controller.source);
+    }
+    _all?.pollingEnabled = view == _MfTvView.all;
+    _controller.pollingEnabled = view != _MfTvView.all;
+    if (view == _MfTvView.all) _all?.silentReload();
+    setState(() => _view = view);
+  }
+
+  void _openSearch() {
+    final source = _controller.source;
+    if (source == null) return;
+    unawaited(Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CatalogSearchScreen(source: source))));
+  }
+
+  Widget _pills() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          MfToggleChip(label: _tr('Cerca', 'Search'), selected: false, onTap: _openSearch),
+          MfToggleChip(
+            label: maggioflixMyRequestsLabel(),
+            selected: _view == _MfTvView.mine,
+            onTap: () => _select(_MfTvView.mine),
+          ),
+          MfToggleChip(
+            label: _tr('Tutte le richieste', 'All requests'),
+            selected: _view == _MfTvView.all,
+            onTap: () => _select(_MfTvView.all),
+          ),
+          MfToggleChip(
+            label: maggioflixCalendarLabel(),
+            selected: _view == _MfTvView.calendar,
+            onTap: () => _select(_MfTvView.calendar),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final autofocusFirst = InputModeTracker.isKeyboardMode(context);
     final theme = Theme.of(context);
-    final c = _controller;
+    final c = _current;
+    final isCalendar = _view == _MfTvView.calendar;
+    final showRequester = _view == _MfTvView.all;
     return FocusedScrollScaffold(
-      title: Text(_tr('Le mie richieste', 'My requests')),
+      title: Text(_tr('Richieste', 'Requests')),
       actions: [
         IconButton(
           tooltip: t.common.refresh,
           icon: const AppIcon(Symbols.refresh_rounded, fill: 1),
-          onPressed: () => unawaited(c.load()),
+          onPressed: () {
+            if (isCalendar) {
+              unawaited(_calendar.currentState?.reload(force: true));
+            } else {
+              unawaited(c.load());
+            }
+          },
         ),
       ],
       slivers: [
         const SliverToBoxAdapter(child: MaggioflixQuotaBanner()),
-        if (c.loading)
+        SliverToBoxAdapter(child: _pills()),
+        if (isCalendar)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+            sliver: SliverToBoxAdapter(
+              child: LayoutBuilder(
+                builder: (context, constraints) => MfMonthCalendar(key: _calendar, wide: constraints.maxWidth >= 820),
+              ),
+            ),
+          )
+        else if (c.loading)
           const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator()))
         else if (c.failed)
           SliverFillRemaining(
@@ -803,7 +882,7 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_tr('Impossibile caricare le richieste.', 'Could not load your requests.')),
+                  Text(_tr('Impossibile caricare le richieste.', 'Could not load the requests.')),
                   const SizedBox(height: 12),
                   OutlinedButton(onPressed: () => unawaited(c.load()), child: Text(t.common.retry)),
                 ],
@@ -815,7 +894,9 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
             hasScrollBody: false,
             child: Center(
               child: Text(
-                _tr('Non hai ancora fatto richieste.', "You haven't requested anything yet."),
+                showRequester
+                    ? _tr('Nessuna richiesta sul server.', 'No requests on the server.')
+                    : _tr('Non hai ancora fatto richieste.', "You haven't requested anything yet."),
                 style: theme.textTheme.bodyLarge,
               ),
             ),
@@ -824,10 +905,11 @@ class _MaggioflixRequestsScreenState extends State<MaggioflixRequestsScreen> {
           SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) => _RequestTile(
-                key: ValueKey('mf-request-${c.requests[index].id}'),
+                key: ValueKey('mf-request-${_view.name}-${c.requests[index].id}'),
                 request: c.requests[index],
                 item: c.itemFor(c.requests[index]),
                 autofocus: autofocusFirst && index == 0,
+                showRequester: showRequester,
               ),
               childCount: c.requests.length,
             ),
@@ -1113,12 +1195,37 @@ extension on _LiveDownloadProgressState {
   }
 }
 
+/// "Stagione 2: 3 episodi in download" per le serie con più stagioni in arrivo.
+String? _seasonDownloadsLine(MfRequest r) {
+  if (r.kind != MediaKind.show || r.downloads.isEmpty) return null;
+  final bySeason = <int, int>{};
+  for (final d in r.downloads) {
+    final season = d.season;
+    if (season == null) continue;
+    bySeason[season] = (bySeason[season] ?? 0) + 1;
+  }
+  if (bySeason.isEmpty) return null;
+  final seasons = bySeason.keys.toList()..sort();
+  return seasons
+      .map((n) => _tr('Stagione $n: ${bySeason[n]} in download', 'Season $n: ${bySeason[n]} downloading'))
+      .join(' · ');
+}
+
 class _RequestTile extends StatelessWidget {
   final MfRequest request;
   final Future<({CatalogItem item, String? thumbUrl})?> item;
   final bool autofocus;
 
-  const _RequestTile({super.key, required this.request, required this.item, this.autofocus = false});
+  /// Nelle richieste di tutti: chi l'ha chiesto.
+  final bool showRequester;
+
+  const _RequestTile({
+    super.key,
+    required this.request,
+    required this.item,
+    this.autofocus = false,
+    this.showRequester = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1142,6 +1249,7 @@ class _RequestTile extends StatelessWidget {
           request.kind == MediaKind.movie ? _tr('Film', 'Movie') : _tr('Serie TV', 'TV show'),
           if (data?.item.year case final year?) '$year',
           if (request.is4k) '4K',
+          if (showRequester && request.requestedBy != null) _tr('di ${request.requestedBy}', 'by ${request.requestedBy}'),
           if (request.kind == MediaKind.show && request.seasons.isNotEmpty)
             _tr('Stagioni ${request.seasons.join(', ')}', 'Seasons ${request.seasons.join(', ')}'),
           if (request.createdAt case final created?)
@@ -1201,9 +1309,29 @@ class _RequestTile extends StatelessWidget {
               if (request.isDownloading) ...[
                 const SizedBox(height: 6),
                 _LiveDownloadProgress(request: request),
+                if (_seasonDownloadsLine(request) case final line?) ...[
+                  const SizedBox(height: 4),
+                  Text(line, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+                ],
+              ] else if (_phoneStatusOf(request, data?.item, theme).detail case final detail?) ...[
+                const SizedBox(height: 4),
+                Text(detail, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
               ],
             ],
           ),
+          trailing: request.isWatchable && request.playLink != null
+              ? FilledButton.icon(
+                  onPressed: () => DeepLinkService.instance.receive(request.playLink!),
+                  icon: const AppIcon(Symbols.play_arrow_rounded, fill: 1, size: 18),
+                  label: Text(_tr('Guarda', 'Watch')),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: theme.colorScheme.onSurface,
+                    foregroundColor: theme.colorScheme.surface,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                )
+              : null,
           onTap: data == null ? null : () => unawaited(navigateToCatalogItem(context, data.item)),
         );
       },

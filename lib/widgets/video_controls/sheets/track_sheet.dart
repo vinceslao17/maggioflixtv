@@ -1,9 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../../../media/media_source_info.dart';
 import '../../../mpv/mpv.dart';
 import '../../../services/playback_subtitle_resolver.dart';
+import '../../../services/player_sync_offsets.dart';
+import '../../../services/scoped_player_prefs.dart';
+import '../../../services/settings_service.dart';
+import '../../../utils/formatters.dart';
 import '../../../services/track_selection_service.dart';
 import '../../../i18n/strings.g.dart';
 import '../../../utils/track_label_builder.dart';
@@ -100,6 +106,7 @@ class TrackSheet extends StatelessWidget {
                     trackControlsState: state,
                     selection: sel,
                     showHeader: showHeader,
+                    player: player,
                   );
                 }
                 return _SubtitleColumn(
@@ -210,12 +217,14 @@ class _SourceSubtitleColumn extends StatelessWidget {
   /// against what mpv is actually playing rather than only what was requested.
   final TrackSelection selection;
   final bool showHeader;
+  final Player player;
 
   const _SourceSubtitleColumn({
     required this.tracks,
     required this.trackControlsState,
     required this.selection,
     required this.showHeader,
+    required this.player,
   });
 
   @override
@@ -228,7 +237,7 @@ class _SourceSubtitleColumn extends StatelessWidget {
       headerLabel: showHeader ? t.videoControls.subtitlesLabel : null,
       itemCount: tracks.length + 1,
       initialIndex: selectedIndex,
-      footer: _buildSubtitleSearchFooter(context, trackControlsState),
+      footer: _buildSubtitleSearchFooter(context, trackControlsState, player),
       itemBuilder: (context, index, scope) {
         if (index == 0) {
           return TrackSelectionHelper.buildOffTile(
@@ -379,7 +388,7 @@ class _SubtitleColumn extends StatelessWidget {
       headerLabel: showHeader ? t.videoControls.subtitlesLabel : null,
       itemCount: itemCount,
       initialIndex: selectedIndex,
-      footer: _buildSubtitleSearchFooter(context, trackControlsState),
+      footer: _buildSubtitleSearchFooter(context, trackControlsState, player),
       itemBuilder: (context, index, scope) {
         if (index == 0) {
           return TrackSelectionHelper.buildOffTile(
@@ -490,11 +499,12 @@ class _SubtitleColumn extends StatelessWidget {
   }
 }
 
-List<Widget> _buildSubtitleSearchFooter(BuildContext context, TrackControlsState state) {
-  if (!state.canSearchSubtitles) return const [];
-
+List<Widget> _buildSubtitleSearchFooter(BuildContext context, TrackControlsState state, Player player) {
   return [
     Divider(height: 1, color: Theme.of(context).dividerColor),
+    _SubtitleQuickAdjust(player: player, state: state),
+    if (state.canSearchSubtitles) Divider(height: 1, color: Theme.of(context).dividerColor),
+    if (state.canSearchSubtitles)
     FocusableListTile(
       leading: const AppIcon(Symbols.search_rounded),
       title: Text(t.videoControls.searchSubtitles),
@@ -510,4 +520,131 @@ List<Widget> _buildSubtitleSearchFooter(BuildContext context, TrackControlsState
       },
     ),
   ];
+}
+
+/// Dimensione e ritardo dei sottotitoli a portata di mano, nello stesso pannello
+/// in cui si sceglie la traccia: così non serve aprire le impostazioni del player.
+class _SubtitleQuickAdjust extends StatefulWidget {
+  final Player player;
+  final TrackControlsState state;
+
+  const _SubtitleQuickAdjust({required this.player, required this.state});
+
+  @override
+  State<_SubtitleQuickAdjust> createState() => _SubtitleQuickAdjustState();
+}
+
+class _SubtitleQuickAdjustState extends State<_SubtitleQuickAdjust> {
+  static const int _sizeStep = 4;
+  static const int _sizeMin = 16;
+  static const int _sizeMax = 90;
+  static const int _delayStepMs = 100;
+
+  late int _size;
+  late int _delayMs;
+
+  @override
+  void initState() {
+    super.initState();
+    _size = SettingsService.instance.read(SettingsService.subtitleFontSize);
+    _delayMs = PlayerSyncOffsets.of(widget.player).subtitleMs;
+  }
+
+  Future<void> _changeSize(int delta) async {
+    final next = (_size + delta).clamp(_sizeMin, _sizeMax).toInt();
+    if (next == _size) return;
+    setState(() => _size = next);
+    final svc = SettingsService.instance;
+    await svc.write(SettingsService.subtitleFontSize, next);
+    final player = widget.player;
+    try {
+      await player.setProperty('sub-font-size', next.toString());
+      if (player.playerType == 'exoplayer') {
+        await player.setSubtitleStyle(
+          fontSize: next.toDouble(),
+          textColor: svc.read(SettingsService.subtitleTextColor),
+          borderSize: svc.read(SettingsService.subtitleBorderSize).toDouble(),
+          borderColor: svc.read(SettingsService.subtitleBorderColor),
+          bgColor: svc.read(SettingsService.subtitleBackgroundColor),
+          bgOpacity: svc.read(SettingsService.subtitleBackgroundOpacity),
+          subtitlePosition: svc.read(SettingsService.subtitlePosition),
+          bold: svc.read(SettingsService.subtitleBold),
+          italic: svc.read(SettingsService.subtitleItalic),
+          anchorToScreen: svc.read(SettingsService.subtitleAnchorToScreen),
+        );
+      }
+    } catch (_) {
+      // La preferenza è salvata comunque: si applica al prossimo avvio.
+    }
+  }
+
+  Future<void> _changeDelay(int deltaMs) async {
+    final next = _delayMs + deltaMs;
+    setState(() => _delayMs = next);
+    final player = widget.player;
+    try {
+      await player.setProperty(PlayerSyncOffsets.subtitleProperty, (next / 1000.0).toString());
+      PlayerSyncOffsets.of(player).recordApplied(PlayerSyncOffsets.subtitleProperty, next);
+      await ScopedPlayerPrefs.write(ScopedPlayerPrefs.subtitleSyncOffset, widget.state.metadata, next);
+    } catch (_) {
+      // Il ritardo resta quello precedente se il player non lo accetta.
+    }
+  }
+
+  Widget _group({
+    required String label,
+    required String value,
+    required VoidCallback onMinus,
+    required VoidCallback onPlus,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 13)),
+        const SizedBox(width: 6),
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          tooltip: '$label −',
+          icon: const AppIcon(Symbols.remove_rounded),
+          onPressed: onMinus,
+        ),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 44),
+          child: Text(value, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600)),
+        ),
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          tooltip: '$label +',
+          icon: const AppIcon(Symbols.add_rounded),
+          onPressed: onPlus,
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        children: [
+          _group(
+            label: 'Dimensione',
+            value: '$_size',
+            onMinus: () => unawaited(_changeSize(-_sizeStep)),
+            onPlus: () => unawaited(_changeSize(_sizeStep)),
+          ),
+          _group(
+            label: 'Ritardo',
+            value: formatSyncOffset(_delayMs.toDouble()),
+            onMinus: () => unawaited(_changeDelay(-_delayStepMs)),
+            onPlus: () => unawaited(_changeDelay(_delayStepMs)),
+          ),
+        ],
+      ),
+    );
+  }
 }
