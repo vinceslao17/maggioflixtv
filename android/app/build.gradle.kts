@@ -308,6 +308,10 @@ android {
     versionName = flutter.versionName
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+    // Bundle solo TV per il canale dedicato Android TV di Google Play: leanback obbligatorio.
+    val tvOnly = System.getenv("MAGGIOFLIX_TV") != null
+    manifestPlaceholders["leanbackRequired"] = if (tvOnly) "true" else "false"
+
     externalNativeBuild {
       cmake {
         arguments += listOf(

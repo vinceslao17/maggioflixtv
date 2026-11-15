@@ -71,14 +71,25 @@ def main() -> None:
         "status": "completed",
         "releaseNotes": [{"language": "en-US", "text": notes[:500]}],
     }
-    r = session.put(f"{API}/edits/{edit}/tracks/{TRACK}", json={"track": TRACK, "releases": [release]}, timeout=60)
-    if not r.ok:
-        fail(f"aggiornamento canale {TRACK}", r)
+    tracks = [TRACK]
+    if TRACK == "tv":
+        # Canali dedicati Android TV: test interno (tv:qa) e ogni test chiuso TV.
+        r = session.get(f"{API}/edits/{edit}/tracks", timeout=60)
+        if not r.ok:
+            fail("elenco canali", r)
+        names = [t["track"] for t in r.json().get("tracks", [])]
+        tracks = [n for n in names if n.startswith("tv:") and n not in ("tv:production", "tv:beta")]
+        if not tracks:
+            sys.exit(f"Google Play: nessun canale di test Android TV trovato (canali: {', '.join(names)})")
+    for track in tracks:
+        r = session.put(f"{API}/edits/{edit}/tracks/{track}", json={"track": track, "releases": [release]}, timeout=60)
+        if not r.ok:
+            fail(f"aggiornamento canale {track}", r)
 
     r = session.post(f"{API}/edits/{edit}:commit", timeout=120)
     if not r.ok:
         fail("pubblicazione", r)
-    print(f"{name} pubblicata nel canale '{TRACK}' di Google Play.")
+    print(f"{name} pubblicata nei canali {', '.join(tracks)} di Google Play.")
 
 
 if __name__ == "__main__":

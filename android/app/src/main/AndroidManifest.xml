@@ -28,7 +28,9 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
 
 
-    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <!-- MaggioFlix: "false" nel bundle unico (telefoni + TV); "true" nel bundle solo TV
+         (MAGGIOFLIX_TV=1), richiesto dal canale di rilascio dedicato ad Android TV. -->
+    <uses-feature android:name="android.software.leanback" android:required="${leanbackRequired}" />
     <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />

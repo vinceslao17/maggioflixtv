@@ -109,7 +109,19 @@ jobs:
       - name: Build App Bundle (Google Play)
         # Per il Play Store serve l'AAB. versionCode 3000 + build: mai più basso
         # dell'APK installato da GitHub (arm64 = 2000 + 1000 + build).
-        run: flutter build appbundle --release --build-name=3.${{ github.run_number }}.0 --build-number=$((3000 + ${{ github.run_number }})) --dart-define=GIT_COMMIT=${{ github.sha }} --dart-define=MAGGIOFLIX_BUILD=${{ github.run_number }}
+        run: |
+          flutter build appbundle --release --build-name=3.${{ github.run_number }}.0 --build-number=$((3000 + ${{ github.run_number }})) --dart-define=GIT_COMMIT=${{ github.sha }} --dart-define=MAGGIOFLIX_BUILD=${{ github.run_number }}
+          mkdir -p dist
+          cp build/app/outputs/bundle/release/app-release.aab dist/maggioflix-google-play.aab
+
+      - name: Build App Bundle (Google Play, solo Android TV)
+        # Canale dedicato Android TV: stesso codice, ma leanback obbligatorio.
+        # versionCode 4000 + build, diverso da quello del bundle telefoni.
+        env:
+          MAGGIOFLIX_TV: "1"
+        run: |
+          flutter build appbundle --release --build-name=3.${{ github.run_number }}.0 --build-number=$((4000 + ${{ github.run_number }})) --dart-define=GIT_COMMIT=${{ github.sha }} --dart-define=MAGGIOFLIX_BUILD=${{ github.run_number }}
+          cp build/app/outputs/bundle/release/app-release.aab dist/maggioflix-google-play-tv.aab
 
       - name: Clean up keystore
         if: always()
@@ -120,7 +132,6 @@ jobs:
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/maggioflix-arm64-v8a.apk
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/maggioflix-armeabi-v7a.apk
-          cp build/app/outputs/bundle/release/app-release.aab dist/maggioflix-google-play.aab
           ls -lh dist
 
       - name: Upload artifact
@@ -298,6 +309,16 @@ jobs:
           /tmp/play/bin/pip install --quiet "google-auth==2.*" "requests==2.*"
           subject=$(git log -1 --pretty=%s)
           /tmp/play/bin/python .github/scripts/play_upload.py dist/maggioflix-google-play.aab \
+            "MaggioFlix v3.${GITHUB_RUN_NUMBER}" "MaggioFlix v3.${GITHUB_RUN_NUMBER} – ${subject}"
+
+      - name: Upload to Google Play (Android TV, canali dedicati)
+        # Carica il bundle solo TV su tutti i canali di test Android TV (tv:qa e i test chiusi tv:...).
+        if: steps.key.outputs.ok == 'true'
+        env:
+          PLAY_TRACK: tv
+        run: |
+          subject=$(git log -1 --pretty=%s)
+          /tmp/play/bin/python .github/scripts/play_upload.py dist/maggioflix-google-play-tv.aab \
             "MaggioFlix v3.${GITHUB_RUN_NUMBER}" "MaggioFlix v3.${GITHUB_RUN_NUMBER} – ${subject}"
 
   amazon:
